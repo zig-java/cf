@@ -21,7 +21,7 @@ pub const AccessFlags = struct {
 access_flags: AccessFlags,
 name_index: u16,
 descriptor_index: u16,
-attributes: std.ArrayList(AttributeInfo),
+attributes: std.ArrayList(attributes.AttributeInfo),
 
 pub fn getName(self: *Self, class_file: ClassFile) ConstantPool.Utf8Info {
     return class_file.constant_pool.get(self.name_index).utf8;
