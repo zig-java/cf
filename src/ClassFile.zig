@@ -38,7 +38,7 @@ minor_version: u16,
 major_version: u16,
 /// The constant_pool is a table of structures ([§4.4](https://docs.oracle.com/javase/specs/jvms/se16/html/jvms-4.html#jvms-4.4)) representing various string constants, class and interface names, field names, and other constants that are referred to within the ClassFile structure and its substructures
 ///
-/// The constant_pool table is indexed from 1 to constant_pool_count - 1
+/// The constant_pool table is indexed from 1 to ConstantPoolcount - 1
 constant_pool: ConstantPool,
 /// The value of the access_flags item is a mask of flags used to denote access permissions to and properties of this class or interface. The interpretation of each flag, when set, is specified in [Table 4.1-B](https://docs.oracle.com/javase/specs/jvms/se16/html/jvms-4.html#jvms-4.1-200-E.1)
 access_flags: AccessFlags,
@@ -59,7 +59,7 @@ methods: std.ArrayList(MethodInfo),
 /// Attributes the class has
 attributes: std.ArrayList(attributes.AttributeInfo),
 
-pub fn getConstantPoolEntry(self: ClassFile, index: u16) constant_pool_.Entry {
+pub fn getConstantPoolEntry(self: ClassFile, index: u16) ConstantPool.Entry {
     return self.constant_pool[index - 1];
 }
 
@@ -71,10 +71,12 @@ pub fn decode(allocator: *std.mem.Allocator, reader: anytype) !ClassFile {
     var major_version = try reader.readIntBig(u16);
 
     var constant_pool = ConstantPool.init(allocator);
-    try constant_pool.entries.ensureTotalCapacity((try reader.readIntBig(u16)) - 1);
+    var z = (try reader.readIntBig(u16)) - 1;
+    try constant_pool.entries.ensureTotalCapacity(z);
+    constant_pool.entries.expandToCapacity();
 
     var constant_pool_index: usize = 0;
-    while (constant_pool_index < constant_pool.entries.capacity) : (constant_pool_index += 1) {
+    while (constant_pool_index < z) : (constant_pool_index += 1) {
         var cp = try constant_pool.decodeEntry(allocator, reader);
         constant_pool.entries.items[constant_pool_index] = cp;
 
@@ -103,27 +105,17 @@ pub fn decode(allocator: *std.mem.Allocator, reader: anytype) !ClassFile {
     var super_class_u = try reader.readIntBig(u16);
     var super_class = if (super_class_u == 0) null else super_class_u;
 
-    var interfaces_count = try reader.readIntBig(u16);
-    var interfaces = try allocator.alloc(constant_pool_.ClassInfo, interfaces_count);
-    for (interfaces) |*i| {
-        var k = try reader.readStruct(constant_pool_.ClassInfo);
-        if (std.Target.current.cpu.arch.endian() == .Little) {
-            inline for (std.meta.fields(constant_pool_.ClassInfo)) |f2| @field(k, f2.name) = @byteSwap(f2.field_type, @field(k, f2.name));
-        }
-        i.* = k;
-    }
+    var interfaces = try std.ArrayList(u16).initCapacity(allocator, try reader.readIntBig(u16));
+    for (interfaces.items) |*i| i.* = try reader.readIntBig(u16);
 
-    var fields_count = try reader.readIntBig(u16);
-    var fieldss = try allocator.alloc(FieldInfo, fields_count);
-    for (fieldss) |*f| f.* = try FieldInfo.readFrom(allocator, reader);
+    var fieldss = try std.ArrayList(FieldInfo).initCapacity(allocator, try reader.readIntBig(u16));
+    for (fieldss.items) |*f| f.* = try FieldInfo.decode(&constant_pool, allocator, reader);
 
-    var methods_count = try reader.readIntBig(u16);
-    var methodss = try allocator.alloc(MethodInfo, methods_count);
-    for (methodss) |*m| m.* = try MethodInfo.readFrom(allocator, reader);
+    var methodss = try std.ArrayList(MethodInfo).initCapacity(allocator, try reader.readIntBig(u16));
+    for (methodss.items) |*m| m.* = try MethodInfo.decode(&constant_pool, allocator, reader);
 
-    var attributes_count = try reader.readIntBig(u16);
-    var attributess = try allocator.alloc(attributes.AttributeInfo, attributes_count);
-    for (attributess) |*a| a.* = try attributes.AttributeInfo.readFrom(allocator, reader);
+    var attributess = try std.ArrayList(attributes.AttributeInfo).initCapacity(allocator, try reader.readIntBig(u16));
+    for (attributess.items) |*a| a.* = try attributes.AttributeInfo.decode(&constant_pool, allocator, reader);
 
     return ClassFile{
         .minor_version = minor_version,

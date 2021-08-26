@@ -10,10 +10,10 @@ pub fn init(allocator: *std.mem.Allocator) ConstantPool {
 }
 
 pub fn get(self: ConstantPool, index: u16) Entry {
-    return self.entries[index - 1];
+    return self.entries.items[index - 1];
 }
 
-fn Serialize(comptime T: type) type {
+pub fn Serialize(comptime T: type) type {
     return struct {
         pub fn decode(constant_pool: *const ConstantPool, reader: anytype) !T {
             var value: T = undefined;
@@ -162,6 +162,12 @@ pub const Utf8Info = struct {
             .constant_pool = constant_pool,
             .bytes = bytes,
         };
+    }
+
+    pub fn format(value: Utf8Info, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+        _ = fmt;
+        _ = options;
+        try writer.print("Utf8Info(\"{s}\")", .{value.bytes});
     }
 };
 
