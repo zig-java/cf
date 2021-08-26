@@ -3,8 +3,8 @@ const std = @import("std");
 pub const MethodDescriptor = struct {
     const Self = @This();
 
-    parameters: []const Descriptor,
-    return_type: *const Descriptor,
+    parameters: []*Descriptor,
+    return_type: *Descriptor,
 
     pub fn stringify(self: Self, writer: anytype) anyerror!void {
         try writer.writeByte('(');
@@ -17,11 +17,6 @@ pub const MethodDescriptor = struct {
         for (self.parameters) |*param| param.*.deinit(allocator);
         allocator.free(self.parameters);
         self.return_type.deinit(allocator);
-    }
-
-    pub fn toStringArrayList(self: Self, buf: *std.ArrayList(u8)) !void {
-        try buf.ensureCapacity(0);
-        try self.stringify(buf.writer());
     }
 };
 
@@ -41,7 +36,7 @@ pub const Descriptor = union(enum) {
     boolean: void,
 
     object: []const u8,
-    array: *const Descriptor,
+    array: *Descriptor,
     method: MethodDescriptor,
 
     /// Only valid for method `return_type`s

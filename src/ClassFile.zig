@@ -131,6 +131,14 @@ pub fn decode(allocator: *std.mem.Allocator, reader: anytype) !ClassFile {
     };
 }
 
+pub fn deinit(self: *ClassFile) void {
+    self.constant_pool.deinit();
+    self.interfaces.deinit();
+    self.fields.deinit();
+    self.methods.deinit();
+    self.attributes.deinit();
+}
+
 pub const JavaSEVersion = enum { @"1.1", @"1.2", @"1.3", @"1.4", @"5.0", @"6", @"7", @"8", @"9", @"10", @"11", @"12", @"13", @"14", @"15", @"16" };
 pub const GetJavaSEVersionError = error{InvalidMajorVersion};
 
@@ -161,5 +169,6 @@ test "Decode ClassFile" {
     const harness = @import("../test/harness.zig");
     var reader = harness.hello.fbs().reader();
 
-    std.debug.print("\n\n\n{s}\n\n\n", .{try ClassFile.decode(std.testing.allocator, reader)});
+    var cf = try ClassFile.decode(std.testing.allocator, reader);
+    defer cf.deinit();
 }
