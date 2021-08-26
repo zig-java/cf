@@ -22,20 +22,23 @@ fn Serialize(comptime T: type) type {
             inline for (std.meta.fields(T)[1..]) |field| {
                 @field(value, field.name) = switch (@typeInfo(field.field_type)) {
                     .Int => try reader.readIntBig(field.field_type),
-                    .Enum => |info| @intToEnum(field.field_type, info.tag_type),
+                    .Enum => |info| @intToEnum(field.field_type, try reader.readIntBig(info.tag_type)),
                     else => @compileError("Decode not implemented: " ++ @typeName(field.field_type)),
                 };
             }
+
+            return value;
         }
     };
 }
 
-pub fn decodeEntry(allocator: *std.mem.Allocator, reader: anytype) !Entry {
+pub fn decodeEntry(self: ConstantPool, allocator: *std.mem.Allocator, reader: anytype) !Entry {
     var tag = try reader.readIntBig(u8);
-    inline for (@typeInfo(Tag).Enum.fields) |f| {
+    inline for (@typeInfo(Tag).Enum.fields) |f, i| {
         const this_tag_value = @field(Tag, f.name);
         if (tag == @enumToInt(this_tag_value)) {
-            var value = if (@hasDecl(f.field_type, "decode")) try @field(f.field_type, "decode")(self, allocator, reader) else try Serialize(f.field_type).decode(self, reader);
+            const T = std.meta.fields(Entry)[i].field_type;
+            var value = if (@hasDecl(T, "decode")) try @field(T, "decode")(&self, allocator, reader) else try Serialize(T).decode(&self, reader);
             return @unionInit(Entry, f.name, value);
         }
     }

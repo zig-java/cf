@@ -3,7 +3,10 @@
 // NOTE: The JDK docs refer to numeric types as u1, u2, etc. - these are in BYTES, not BITS (u1 = u8, u2 = u16, etc.)
 
 const std = @import("std");
+const utils = @import("utils.zig");
+const attributes = @import("attributes.zig");
 const FieldInfo = @import("FieldInfo.zig");
+const MethodInfo = @import("MethodInfo.zig");
 const ConstantPool = @import("ConstantPool.zig");
 
 const ClassFile = @This();
@@ -52,7 +55,7 @@ interfaces: std.ArrayList(u16),
 /// Fields this class has
 fields: std.ArrayList(FieldInfo),
 /// Methods the class has
-methods: std.ArrayList(methods.MethodInfo),
+methods: std.ArrayList(MethodInfo),
 /// Attributes the class has
 attributes: std.ArrayList(attributes.AttributeInfo),
 
@@ -68,12 +71,12 @@ pub fn decode(allocator: *std.mem.Allocator, reader: anytype) !ClassFile {
     var major_version = try reader.readIntBig(u16);
 
     var constant_pool = ConstantPool.init(allocator);
-    constant_pool.entries.ensureTotalCapacity(try reader.readIntBig(u16) - 1);
+    try constant_pool.entries.ensureTotalCapacity((try reader.readIntBig(u16)) - 1);
 
     var constant_pool_index: usize = 0;
     while (constant_pool_index < constant_pool.entries.capacity) : (constant_pool_index += 1) {
-        var cp = try constant_pool_.Entry.decode(allocator, reader);
-        constant_pool[constant_pool_index] = cp;
+        var cp = try constant_pool.decodeEntry(allocator, reader);
+        constant_pool.entries.items[constant_pool_index] = cp;
 
         // Doubles and longs take up two slots because Java is bad (https://docs.oracle.com/javase/specs/jvms/se16/html/jvms-4.html#jvms-4.10.2.3)
         if (cp == .double or cp == .long) {
@@ -95,10 +98,10 @@ pub fn decode(allocator: *std.mem.Allocator, reader: anytype) !ClassFile {
     };
 
     var this_class_u = try reader.readIntBig(u16);
-    var this_class = &constant_pool[this_class_u - 1].class;
+    var this_class = this_class_u;
 
     var super_class_u = try reader.readIntBig(u16);
-    var super_class = if (super_class_u == 0) null else &constant_pool[super_class_u - 1].class;
+    var super_class = if (super_class_u == 0) null else super_class_u;
 
     var interfaces_count = try reader.readIntBig(u16);
     var interfaces = try allocator.alloc(constant_pool_.ClassInfo, interfaces_count);
@@ -115,8 +118,8 @@ pub fn decode(allocator: *std.mem.Allocator, reader: anytype) !ClassFile {
     for (fieldss) |*f| f.* = try FieldInfo.readFrom(allocator, reader);
 
     var methods_count = try reader.readIntBig(u16);
-    var methodss = try allocator.alloc(methods.MethodInfo, methods_count);
-    for (methodss) |*m| m.* = try methods.MethodInfo.readFrom(allocator, reader);
+    var methodss = try allocator.alloc(MethodInfo, methods_count);
+    for (methodss) |*m| m.* = try MethodInfo.readFrom(allocator, reader);
 
     var attributes_count = try reader.readIntBig(u16);
     var attributess = try allocator.alloc(attributes.AttributeInfo, attributes_count);
@@ -160,4 +163,11 @@ pub fn getJavaSEVersion(self: ClassFile) GetJavaSEVersionError!JavaSEVersion {
         60 => .@"16",
         else => error.InvalidMajorVersion,
     };
+}
+
+test "Decode ClassFile" {
+    const harness = @import("../test/harness.zig");
+    var reader = harness.hello.fbs().reader();
+
+    std.debug.print("\n\n\n{s}\n\n\n", .{try ClassFile.decode(std.testing.allocator, reader)});
 }
