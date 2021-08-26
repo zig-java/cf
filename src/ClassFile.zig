@@ -3,6 +3,7 @@
 // NOTE: The JDK docs refer to numeric types as u1, u2, etc. - these are in BYTES, not BITS (u1 = u8, u2 = u16, etc.)
 
 const std = @import("std");
+const ConstantPool = @import("ConstantPool.zig");
 
 const ClassFile = @This();
 
@@ -34,7 +35,7 @@ major_version: u16,
 /// The constant_pool is a table of structures ([§4.4](https://docs.oracle.com/javase/specs/jvms/se16/html/jvms-4.html#jvms-4.4)) representing various string constants, class and interface names, field names, and other constants that are referred to within the ClassFile structure and its substructures
 ///
 /// The constant_pool table is indexed from 1 to constant_pool_count - 1
-constant_pool: []constant_pool_.Entry,
+constant_pool: ConstantPool,
 /// The value of the access_flags item is a mask of flags used to denote access permissions to and properties of this class or interface. The interpretation of each flag, when set, is specified in [Table 4.1-B](https://docs.oracle.com/javase/specs/jvms/se16/html/jvms-4.html#jvms-4.1-200-E.1)
 access_flags: AccessFlags,
 /// The value of the this_class item must be a valid index into the constant_pool table and the entry at that index must be a CONSTANT_Class_info structure ([§4.4.1](https://docs.oracle.com/javase/specs/jvms/se16/html/jvms-4.html#jvms-4.4.1)) representing the class or interface defined by this class file
@@ -58,23 +59,24 @@ pub fn getConstantPoolEntry(self: ClassFile, index: u16) constant_pool_.Entry {
     return self.constant_pool[index - 1];
 }
 
-pub fn parse(allocator: *std.mem.Allocator, reader: anytype) !ClassFile {
+pub fn decode(allocator: *std.mem.Allocator, reader: anytype) !ClassFile {
     var magic = try reader.readIntBig(u32);
     if (magic != 0xCAFEBABE) return error.BadMagicValue;
 
     var minor_version = try reader.readIntBig(u16);
     var major_version = try reader.readIntBig(u16);
-    var constant_pool_count = try reader.readIntBig(u16);
-    var constant_pool = try allocator.alloc(constant_pool_.Entry, constant_pool_count - 1);
 
-    var cpi: usize = 0;
-    while (cpi < constant_pool.len) : (cpi += 1) {
-        var cp = try constant_pool_.Entry.parse(allocator, reader);
-        constant_pool[cpi] = cp;
+    var constant_pool = ConstantPool.init(allocator);
+    constant_pool.entries.ensureTotalCapacity(try reader.readIntBig(u16) - 1);
+
+    var constant_pool_index: usize = 0;
+    while (constant_pool_index < constant_pool.entries.capacity) : (constant_pool_index += 1) {
+        var cp = try constant_pool_.Entry.decode(allocator, reader);
+        constant_pool[constant_pool_index] = cp;
 
         // Doubles and longs take up two slots because Java is bad (https://docs.oracle.com/javase/specs/jvms/se16/html/jvms-4.html#jvms-4.10.2.3)
         if (cp == .double or cp == .long) {
-            cpi += 1;
+            constant_pool_index += 1;
         }
     }
 
