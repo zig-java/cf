@@ -69,7 +69,7 @@ pub const ClassInfo = struct {
     /// Points to a `Utf8Info`
     name_index: u16,
 
-    pub fn getUtf8Info(self: ClassInfo) Utf8Info {
+    pub fn getName(self: ClassInfo) Utf8Info {
         return self.constant_pool.get(self.name_index).utf8;
     }
 };
@@ -134,12 +134,12 @@ pub const NameAndTypeInfo = struct {
     /// Points to a `Utf8Info` representing a field or method descriptor
     descriptor_index: u16,
 
-    pub fn getName(self: Self, constant_pool: []Entry) []const u8 {
-        return constant_pool[self.name_index - 1].utf8.bytes;
+    pub fn getName(self: Self, constant_pool: []Entry) Utf8Info {
+        return constant_pool[self.name_index - 1].utf8;
     }
 
-    pub fn getDescriptor(self: Self, constant_pool: []Entry) []const u8 {
-        return constant_pool[self.descriptor_index - 1].utf8.bytes;
+    pub fn getDescriptor(self: Self, constant_pool: []Entry) Utf8Info {
+        return constant_pool[self.descriptor_index - 1].utf8;
     }
 };
 
@@ -206,8 +206,8 @@ pub const MethodTypeInfo = struct {
 
     descriptor_index: u16,
 
-    pub fn getDescriptor(self: Self, constant_pool: []Entry) []const u8 {
-        return constant_pool[self.descriptor_index - 1].utf8.bytes;
+    pub fn getDescriptor(self: Self, constant_pool: []Entry) Utf8Info {
+        return constant_pool[self.descriptor_index - 1].utf8;
     }
 };
 
@@ -238,8 +238,8 @@ pub const ModuleInfo = struct {
 
     name_index: u16,
 
-    pub fn getName(self: Self, constant_pool: []Entry) []const u8 {
-        return constant_pool[self.name_index - 1].utf8.bytes;
+    pub fn getName(self: Self, constant_pool: []Entry) Utf8Info {
+        return constant_pool[self.name_index - 1].utf8;
     }
 };
 
@@ -248,8 +248,8 @@ pub const PackageInfo = struct {
 
     name_index: u16,
 
-    pub fn getName(self: Self, constant_pool: []Entry) []const u8 {
-        return constant_pool[self.name_index - 1].utf8.bytes;
+    pub fn getName(self: Self, constant_pool: []Entry) Utf8Info {
+        return constant_pool[self.name_index - 1].utf8;
     }
 };
 

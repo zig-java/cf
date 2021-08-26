@@ -3,6 +3,7 @@
 // NOTE: The JDK docs refer to numeric types as u1, u2, etc. - these are in BYTES, not BITS (u1 = u8, u2 = u16, etc.)
 
 const std = @import("std");
+const FieldInfo = @import("FieldInfo.zig");
 const ConstantPool = @import("ConstantPool.zig");
 
 const ClassFile = @This();
@@ -49,7 +50,7 @@ super_class: ?u16,
 /// Each value in the interfaces array must be a valid index into the constant_pool table and the entry at each value of interfaces[i], where 0 ≤ i < interfaces_count, must be a CONSTANT_Class_info structure representing an interface that is a direct superinterface of this class or interface type, in the left-to-right order given in the source for the type
 interfaces: std.ArrayList(u16),
 /// Fields this class has
-fields: std.ArrayList(fields.FieldInfo),
+fields: std.ArrayList(FieldInfo),
 /// Methods the class has
 methods: std.ArrayList(methods.MethodInfo),
 /// Attributes the class has
@@ -110,8 +111,8 @@ pub fn decode(allocator: *std.mem.Allocator, reader: anytype) !ClassFile {
     }
 
     var fields_count = try reader.readIntBig(u16);
-    var fieldss = try allocator.alloc(fields.FieldInfo, fields_count);
-    for (fieldss) |*f| f.* = try fields.FieldInfo.readFrom(allocator, reader);
+    var fieldss = try allocator.alloc(FieldInfo, fields_count);
+    for (fieldss) |*f| f.* = try FieldInfo.readFrom(allocator, reader);
 
     var methods_count = try reader.readIntBig(u16);
     var methodss = try allocator.alloc(methods.MethodInfo, methods_count);
