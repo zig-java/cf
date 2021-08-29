@@ -307,6 +307,8 @@ pub const Entry = union(Tag) {
         inline for (@typeInfo(Tag).Enum.fields) |f, i| {
             const this_tag_value = @field(Tag, f.name);
             if (@enumToInt(self) == @enumToInt(this_tag_value)) {
+                try writer.writeByte(@enumToInt(self));
+
                 const T = std.meta.fields(Entry)[i].field_type;
                 var value = @field(self, f.name);
 

@@ -32,15 +32,17 @@ pub const AttributeInfo = union(enum) {
     }
 
     pub fn encode(self: AttributeInfo, writer: anytype) !void {
-        if (self == .unknown) return;
+        // if (self == .unknown) return;
+        // inline for (std.meta.fields(AttributeInfo)) |d| {
+        //     if (@enumToInt(self) == d.value) {
+        //         try @field(@field(self, d.name), "encode")(writer);
+        //     }
+        // }
 
-        inline for (std.meta.fields(AttributeInfo)) |d| {
-            if (@enumToInt(self) == d.value) {
-                try @field(@field(self, d.name), "encode")(writer);
-            }
+        switch (self) {
+            .unknown => return,
+            .code => |c| try c.encode(writer),
         }
-
-        unreachable;
     }
 };
 
@@ -63,7 +65,7 @@ pub const ExceptionTableEntry = packed struct {
         try writer.writeIntBig(u16, self.start_pc);
         try writer.writeIntBig(u16, self.end_pc);
         try writer.writeIntBig(u16, self.handler_pc);
-        try writer.writeIntBig(u16, self.catch_pc);
+        try writer.writeIntBig(u16, self.catch_type);
     }
 };
 
@@ -119,17 +121,20 @@ pub const CodeAttribute = struct {
         };
     }
 
-    pub fn encode(self: CodeAttribute, writer: anytype) !void {
+    pub fn encode(self: CodeAttribute, writer: anytype) anyerror!void {
+        try writer.writeIntBig(u16, self.attribute_name_index);
+        try writer.writeIntBig(u32, self.attribute_length);
+
         try writer.writeIntBig(u16, self.max_stack);
         try writer.writeIntBig(u16, self.max_locals);
 
-        try writer.writeIntBig(u32, self.code.len);
+        try writer.writeIntBig(u32, @intCast(u32, self.code.len));
         try writer.writeAll(self.code);
 
-        try writer.writeIntBig(u16, self.exception_table.len);
-        for (self.exception_table) |et| try et.encode(writer);
+        try writer.writeIntBig(u16, @intCast(u16, self.exception_table.items.len));
+        for (self.exception_table.items) |et| try et.encode(writer);
 
-        try writer.writeIntBig(u16, self.attributes.len);
-        for (self.attributes) |at| try at.encode(writer);
+        try writer.writeIntBig(u16, @intCast(u16, self.attributes.items.len));
+        for (self.attributes.items) |at| try at.encode(writer);
     }
 };

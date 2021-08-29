@@ -73,7 +73,7 @@ pub fn decode(allocator: *std.mem.Allocator, reader: anytype) !ClassFile {
     var constant_pool = ConstantPool.init(allocator);
     var z = (try reader.readIntBig(u16)) - 1;
     try constant_pool.entries.ensureTotalCapacity(z);
-    constant_pool.entries.expandToCapacity();
+    constant_pool.entries.items.len = z;
 
     var constant_pool_index: usize = 0;
     while (constant_pool_index < z) : (constant_pool_index += 1) {
@@ -148,20 +148,11 @@ pub fn encode(self: *const ClassFile, writer: anytype) !void {
 
     try writer.writeIntBig(u16, self.minor_version);
     try writer.writeIntBig(u16, self.major_version);
+    try writer.writeIntBig(u16, @intCast(u16, self.constant_pool.entries.items.len) + 1);
 
-    var constant_pool_index: u16 = 0;
-    for (self.constant_pool.entries.items) |cp| {
-        constant_pool_index += 1;
-
-        // Doubles and longs take up two slots because Java is bad (https://docs.oracle.com/javase/specs/jvms/se16/html/jvms-4.html#jvms-4.10.2.3)
-        if (cp == .double or cp == .long) {
-            constant_pool_index += 1;
-        }
-    }
-
-    try writer.writeIntBig(u16, constant_pool_index);
-
-    for (self.constant_pool.entries.items) |cp| {
+    var constant_pool_index: usize = 0;
+    while (constant_pool_index < self.constant_pool.entries.items.len) : (constant_pool_index += 1) {
+        var cp = self.constant_pool.entries.items[constant_pool_index];
         try cp.encode(writer);
 
         if (cp == .double or cp == .long) {
@@ -188,10 +179,10 @@ pub fn encode(self: *const ClassFile, writer: anytype) !void {
     for (self.interfaces.items) |i| try writer.writeIntBig(u16, i);
 
     try writer.writeIntBig(u16, @intCast(u16, self.fields.items.len));
-    for (self.fields.items) |f| f.encode(writer);
+    for (self.fields.items) |f| try f.encode(writer);
 
     try writer.writeIntBig(u16, @intCast(u16, self.methods.items.len));
-    for (self.methods.items) |m| m.encode(writer);
+    for (self.methods.items) |m| try m.encode(writer);
 
     try writer.writeIntBig(u16, @intCast(u16, self.attributes.items.len));
     for (self.attributes.items) |a| try a.encode(writer);
