@@ -13,10 +13,10 @@ pub const AttributeInfo = union(enum) {
         var attribute_length = try reader.readIntBig(u32);
 
         var info = try allocator.alloc(u8, attribute_length);
+        defer allocator.free(info);
         _ = try reader.readAll(info);
 
         var fbs = std.io.fixedBufferStream(info);
-        std.debug.print("\n\n\n{d}\n\n\n", .{constant_pool.get(attribute_name_index)});
         var name = constant_pool.get(attribute_name_index).utf8.bytes;
 
         inline for (std.meta.fields(AttributeInfo)) |d| {
@@ -39,14 +39,14 @@ pub const AttributeInfo = union(enum) {
         };
     }
 
-    pub fn encode(self: AttributeInfo, writer: anytype) !void {
-        // if (self == .unknown) return;
-        // inline for (std.meta.fields(AttributeInfo)) |d| {
-        //     if (@enumToInt(self) == d.value) {
-        //         try @field(@field(self, d.name), "encode")(writer);
-        //     }
-        // }
+    pub fn deinit(self: AttributeInfo) void {
+        return switch (self) {
+            .code => |c| c.deinit(),
+            else => {},
+        };
+    }
 
+    pub fn encode(self: AttributeInfo, writer: anytype) !void {
         switch (self) {
             .unknown => return,
             .code => |c| try c.encode(writer),
@@ -90,7 +90,7 @@ pub const CodeAttribute = struct {
     max_stack: u16,
     max_locals: u16,
 
-    code: []u8,
+    code: std.ArrayList(u8),
     exception_table: std.ArrayList(ExceptionTableEntry),
 
     attributes: std.ArrayList(AttributeInfo),
@@ -100,8 +100,10 @@ pub const CodeAttribute = struct {
         var max_locals = try reader.readIntBig(u16);
 
         var code_length = try reader.readIntBig(u32);
-        var code = try allocator.alloc(u8, code_length);
-        _ = try reader.readAll(code);
+        // var code = try allocator.alloc(u8, code_length);
+        var code = try std.ArrayList(u8).initCapacity(allocator, code_length);
+        code.items.len = code_length;
+        _ = try reader.readAll(code.items);
 
         var exception_table_len = try reader.readIntBig(u16);
         var exception_table = try std.ArrayList(ExceptionTableEntry).initCapacity(allocator, exception_table_len);
@@ -137,7 +139,7 @@ pub const CodeAttribute = struct {
     }
 
     pub fn calcAttrLen(self: CodeAttribute) u32 {
-        var len: u32 = 2 * 4 + 4 + @intCast(u32, self.code.len);
+        var len: u32 = 2 * 4 + 4 + @intCast(u32, self.code.items.len);
         for (self.attributes.items) |att| len += att.calcAttrLen();
         for (self.exception_table.items) |att| len += att.calcAttrLen();
         return len;
@@ -151,13 +153,18 @@ pub const CodeAttribute = struct {
         try writer.writeIntBig(u16, self.max_stack);
         try writer.writeIntBig(u16, self.max_locals);
 
-        try writer.writeIntBig(u32, @intCast(u32, self.code.len));
-        try writer.writeAll(self.code);
+        try writer.writeIntBig(u32, @intCast(u32, self.code.items.len));
+        try writer.writeAll(self.code.items);
 
         try writer.writeIntBig(u16, @intCast(u16, self.exception_table.items.len));
         for (self.exception_table.items) |et| try et.encode(writer);
 
         try writer.writeIntBig(u16, @intCast(u16, self.attributes.items.len));
         for (self.attributes.items) |at| try at.encode(writer);
+    }
+
+    pub fn deinit(self: CodeAttribute) void {
+        self.code.deinit();
+        self.attributes.deinit();
     }
 };

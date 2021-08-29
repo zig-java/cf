@@ -92,3 +92,8 @@ pub fn encode(self: FieldInfo, writer: anytype) !void {
     try writer.writeIntBig(u16, @intCast(u16, self.attributes.items.len));
     for (self.attributes.items) |att| try att.encode(writer);
 }
+
+pub fn deinit(self: FieldInfo) void {
+    for (self.attributes.items) |att| att.deinit();
+    self.attributes.deinit();
+}

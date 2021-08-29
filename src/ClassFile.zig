@@ -194,11 +194,17 @@ pub fn encode(self: *const ClassFile, writer: anytype) !void {
     for (self.attributes.items) |a| try a.encode(writer);
 }
 
-pub fn deinit(self: *ClassFile) void {
+pub fn deinit(self: ClassFile) void {
     self.constant_pool.deinit();
     self.interfaces.deinit();
+
+    for (self.fields.items) |*fie| fie.deinit();
     self.fields.deinit();
+
+    for (self.methods.items) |*met| met.deinit();
     self.methods.deinit();
+
+    for (self.attributes.items) |*att| att.deinit();
     self.attributes.deinit();
 }
 
@@ -245,8 +251,6 @@ test "Encode ClassFile" {
 
     var cf = try ClassFile.decode(std.testing.allocator, reader);
     defer cf.deinit();
-
-    std.debug.print("\n\n\n{s}\n\n\n", .{cf.methods.items});
 
     try cf.encode(joe_file.writer());
 }

@@ -12,7 +12,7 @@ pub fn get(self: ConstantPool, index: u16) Entry {
     return self.entries.items[index - 1];
 }
 
-pub fn deinit(self: *ConstantPool) void {
+pub fn deinit(self: ConstantPool) void {
     for (self.entries.items) |entry| {
         switch (entry) {
             .utf8 => |info| self.entries.allocator.free(info.bytes),

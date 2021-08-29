@@ -3,5 +3,5 @@ pub fn isPresent(comptime T: type, u: T, c: T) bool {
 }
 
 pub fn setPresent(comptime T: type, value: *T, thang: T) void {
-    value.* = value.* & thang;
+    value.* |= thang;
 }
