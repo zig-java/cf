@@ -35,6 +35,12 @@ pub fn getDescriptor(self: MethodInfo) ConstantPool.Utf8Info {
     return self.constant_pool.get(self.descriptor_index).utf8;
 }
 
+pub fn format(self: MethodInfo, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+    _ = fmt;
+    _ = options;
+    try writer.print("MethodInfo({s} {s})", .{ self.getName().bytes, self.getDescriptor().bytes });
+}
+
 pub fn decode(constant_pool: *const ConstantPool, allocator: *std.mem.Allocator, reader: anytype) !MethodInfo {
     var access_flags_u = try reader.readIntBig(u16);
     var name_index = try reader.readIntBig(u16);
@@ -43,7 +49,7 @@ pub fn decode(constant_pool: *const ConstantPool, allocator: *std.mem.Allocator,
     var attributes_length = try reader.readIntBig(u16);
     var attributes_index: usize = 0;
     var attributess = std.ArrayList(AttributeInfo).init(allocator);
-    while (attributes_index < attributes_length) {
+    while (attributes_index < attributes_length) : (attributes_index += 1) {
         var decoded = try AttributeInfo.decode(constant_pool, allocator, reader);
         if (decoded == .unknown) {
             attributes_length -= 1;
@@ -94,5 +100,6 @@ pub fn encode(self: MethodInfo, writer: anytype) !void {
     try writer.writeIntBig(u16, self.name_index);
     try writer.writeIntBig(u16, self.descriptor_index);
 
+    try writer.writeIntBig(u16, @intCast(u16, self.attributes.items.len));
     for (self.attributes.items) |att| try att.encode(writer);
 }

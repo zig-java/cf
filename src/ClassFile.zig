@@ -105,13 +105,19 @@ pub fn decode(allocator: *std.mem.Allocator, reader: anytype) !ClassFile {
     var super_class_u = try reader.readIntBig(u16);
     var super_class = if (super_class_u == 0) null else super_class_u;
 
-    var interfaces = try std.ArrayList(u16).initCapacity(allocator, try reader.readIntBig(u16));
+    var interface_count = try reader.readIntBig(u16);
+    var interfaces = try std.ArrayList(u16).initCapacity(allocator, interface_count);
+    interfaces.items.len = interface_count;
     for (interfaces.items) |*i| i.* = try reader.readIntBig(u16);
 
-    var fieldss = try std.ArrayList(FieldInfo).initCapacity(allocator, try reader.readIntBig(u16));
+    var field_count = try reader.readIntBig(u16);
+    var fieldss = try std.ArrayList(FieldInfo).initCapacity(allocator, field_count);
+    fieldss.items.len = field_count;
     for (fieldss.items) |*f| f.* = try FieldInfo.decode(&constant_pool, allocator, reader);
 
-    var methodss = try std.ArrayList(MethodInfo).initCapacity(allocator, try reader.readIntBig(u16));
+    var method_count = try reader.readIntBig(u16);
+    var methodss = try std.ArrayList(MethodInfo).initCapacity(allocator, method_count);
+    methodss.items.len = method_count;
     for (methodss.items) |*m| m.* = try MethodInfo.decode(&constant_pool, allocator, reader);
 
     // var attributess = try std.ArrayList(attributes.AttributeInfo).initCapacity(allocator, try reader.readIntBig(u16));
@@ -120,7 +126,7 @@ pub fn decode(allocator: *std.mem.Allocator, reader: anytype) !ClassFile {
     var attributes_length = try reader.readIntBig(u16);
     var attributes_index: usize = 0;
     var attributess = std.ArrayList(attributes.AttributeInfo).init(allocator);
-    while (attributes_index < attributes_length) {
+    while (attributes_index < attributes_length) : (attributes_index += 1) {
         var decoded = try attributes.AttributeInfo.decode(&constant_pool, allocator, reader);
         if (decoded == .unknown) {
             attributes_length -= 1;
@@ -222,13 +228,13 @@ pub fn getJavaSEVersion(self: ClassFile) GetJavaSEVersionError!JavaSEVersion {
     };
 }
 
-test "Decode ClassFile" {
-    const harness = @import("../test/harness.zig");
-    var reader = harness.hello.fbs().reader();
+// test "Decode ClassFile" {
+//     const harness = @import("../test/harness.zig");
+//     var reader = harness.hello.fbs().reader();
 
-    var cf = try ClassFile.decode(std.testing.allocator, reader);
-    defer cf.deinit();
-}
+//     var cf = try ClassFile.decode(std.testing.allocator, reader);
+//     defer cf.deinit();
+// }
 
 test "Encode ClassFile" {
     const harness = @import("../test/harness.zig");
@@ -239,6 +245,8 @@ test "Encode ClassFile" {
 
     var cf = try ClassFile.decode(std.testing.allocator, reader);
     defer cf.deinit();
+
+    std.debug.print("\n\n\n{s}\n\n\n", .{cf.methods.items});
 
     try cf.encode(joe_file.writer());
 }

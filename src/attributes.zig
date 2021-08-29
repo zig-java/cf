@@ -16,6 +16,7 @@ pub const AttributeInfo = union(enum) {
         _ = try reader.readAll(info);
 
         var fbs = std.io.fixedBufferStream(info);
+        std.debug.print("\n\n\n{d}\n\n\n", .{constant_pool.get(attribute_name_index)});
         var name = constant_pool.get(attribute_name_index).utf8.bytes;
 
         inline for (std.meta.fields(AttributeInfo)) |d| {
@@ -29,6 +30,13 @@ pub const AttributeInfo = union(enum) {
         }
 
         return .unknown;
+    }
+
+    pub fn calcAttrLen(self: AttributeInfo) u32 {
+        return switch (self) {
+            .code => |c| c.calcAttrLen(),
+            else => 0,
+        };
     }
 
     pub fn encode(self: AttributeInfo, writer: anytype) !void {
@@ -61,6 +69,11 @@ pub const ExceptionTableEntry = packed struct {
         return try reader.readStruct(ExceptionTableEntry);
     }
 
+    pub fn calcAttrLen(self: ExceptionTableEntry) u32 {
+        _ = self;
+        return 2 * 4;
+    }
+
     pub fn encode(self: ExceptionTableEntry, writer: anytype) !void {
         try writer.writeIntBig(u16, self.start_pc);
         try writer.writeIntBig(u16, self.end_pc);
@@ -90,14 +103,16 @@ pub const CodeAttribute = struct {
         var code = try allocator.alloc(u8, code_length);
         _ = try reader.readAll(code);
 
-        var exception_table = try std.ArrayList(ExceptionTableEntry).initCapacity(allocator, try reader.readIntBig(u16));
+        var exception_table_len = try reader.readIntBig(u16);
+        var exception_table = try std.ArrayList(ExceptionTableEntry).initCapacity(allocator, exception_table_len);
+        exception_table.items.len = exception_table_len;
         for (exception_table.items) |*et| et.* = try ExceptionTableEntry.decode(reader);
 
         // TODO: Fix this awful, dangerous, slow hack
         var attributes_length = try reader.readIntBig(u16);
         var attributes_index: usize = 0;
         var attributes = std.ArrayList(AttributeInfo).init(allocator);
-        while (attributes_index < attributes_length) {
+        while (attributes_index < attributes_length) : (attributes_index += 1) {
             var decoded = try AttributeInfo.decode(constant_pool, allocator, reader);
             if (decoded == .unknown) {
                 attributes_length -= 1;
@@ -121,9 +136,17 @@ pub const CodeAttribute = struct {
         };
     }
 
+    pub fn calcAttrLen(self: CodeAttribute) u32 {
+        var len: u32 = 2 * 4 + 4 + @intCast(u32, self.code.len);
+        for (self.attributes.items) |att| len += att.calcAttrLen();
+        for (self.exception_table.items) |att| len += att.calcAttrLen();
+        return len;
+    }
+
     pub fn encode(self: CodeAttribute, writer: anytype) anyerror!void {
         try writer.writeIntBig(u16, self.attribute_name_index);
-        try writer.writeIntBig(u32, self.attribute_length);
+        // try writer.writeIntBig(u32, self.attribute_length);
+        try writer.writeIntBig(u32, self.calcAttrLen());
 
         try writer.writeIntBig(u16, self.max_stack);
         try writer.writeIntBig(u16, self.max_locals);

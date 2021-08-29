@@ -44,7 +44,7 @@ pub fn decode(constant_pool: *const ConstantPool, allocator: *std.mem.Allocator,
     var attributes_length = try reader.readIntBig(u16);
     var attributes_index: usize = 0;
     var attributes = std.ArrayList(AttributeInfo).init(allocator);
-    while (attributes_index < attributes_length) {
+    while (attributes_index < attributes_length) : (attributes_index += 1) {
         var decoded = try AttributeInfo.decode(constant_pool, allocator, reader);
         if (decoded == .unknown) {
             attributes_length -= 1;
