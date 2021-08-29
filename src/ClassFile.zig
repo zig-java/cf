@@ -114,8 +114,20 @@ pub fn decode(allocator: *std.mem.Allocator, reader: anytype) !ClassFile {
     var methodss = try std.ArrayList(MethodInfo).initCapacity(allocator, try reader.readIntBig(u16));
     for (methodss.items) |*m| m.* = try MethodInfo.decode(&constant_pool, allocator, reader);
 
-    var attributess = try std.ArrayList(attributes.AttributeInfo).initCapacity(allocator, try reader.readIntBig(u16));
-    for (attributess.items) |*a| a.* = try attributes.AttributeInfo.decode(&constant_pool, allocator, reader);
+    // var attributess = try std.ArrayList(attributes.AttributeInfo).initCapacity(allocator, try reader.readIntBig(u16));
+    // for (attributess.items) |*a| a.* = try attributes.AttributeInfo.decode(&constant_pool, allocator, reader);
+    // TODO: Fix this awful, dangerous, slow hack
+    var attributes_length = try reader.readIntBig(u16);
+    var attributes_index: usize = 0;
+    var attributess = std.ArrayList(attributes.AttributeInfo).init(allocator);
+    while (attributes_index < attributes_length) {
+        var decoded = try attributes.AttributeInfo.decode(&constant_pool, allocator, reader);
+        if (decoded == .unknown) {
+            attributes_length -= 1;
+            continue;
+        }
+        try attributess.append(decoded);
+    }
 
     return ClassFile{
         .minor_version = minor_version,
@@ -129,6 +141,60 @@ pub fn decode(allocator: *std.mem.Allocator, reader: anytype) !ClassFile {
         .methods = methodss,
         .attributes = attributess,
     };
+}
+
+pub fn encode(self: *const ClassFile, writer: anytype) !void {
+    try writer.writeIntBig(u32, 0xCAFEBABE);
+
+    try writer.writeIntBig(u16, self.minor_version);
+    try writer.writeIntBig(u16, self.major_version);
+
+    var constant_pool_index: u16 = 0;
+    for (self.constant_pool.entries.items) |cp| {
+        constant_pool_index += 1;
+
+        // Doubles and longs take up two slots because Java is bad (https://docs.oracle.com/javase/specs/jvms/se16/html/jvms-4.html#jvms-4.10.2.3)
+        if (cp == .double or cp == .long) {
+            constant_pool_index += 1;
+        }
+    }
+
+    try writer.writeIntBig(u16, constant_pool_index);
+
+    for (self.constant_pool.entries.items) |cp| {
+        try cp.encode(writer);
+
+        if (cp == .double or cp == .long) {
+            constant_pool_index += 1;
+        }
+    }
+
+    var access_flags_u: u16 = 0;
+    if (self.access_flags.public) utils.setPresent(u16, &access_flags_u, 0x0001);
+    if (self.access_flags.final) utils.setPresent(u16, &access_flags_u, 0x0010);
+    if (self.access_flags.super) utils.setPresent(u16, &access_flags_u, 0x0020);
+    if (self.access_flags.interface) utils.setPresent(u16, &access_flags_u, 0x0200);
+    if (self.access_flags.abstract) utils.setPresent(u16, &access_flags_u, 0x0400);
+    if (self.access_flags.synthetic) utils.setPresent(u16, &access_flags_u, 0x1000);
+    if (self.access_flags.annotation) utils.setPresent(u16, &access_flags_u, 0x2000);
+    if (self.access_flags.enum_class) utils.setPresent(u16, &access_flags_u, 0x4000);
+    if (self.access_flags.module) utils.setPresent(u16, &access_flags_u, 0x8000);
+    try writer.writeIntBig(u16, access_flags_u);
+
+    try writer.writeIntBig(u16, self.this_class);
+    try writer.writeIntBig(u16, self.super_class orelse 0);
+
+    try writer.writeIntBig(u16, @intCast(u16, self.interfaces.items.len));
+    for (self.interfaces.items) |i| try writer.writeIntBig(u16, i);
+
+    try writer.writeIntBig(u16, @intCast(u16, self.fields.items.len));
+    for (self.fields.items) |f| f.encode(writer);
+
+    try writer.writeIntBig(u16, @intCast(u16, self.methods.items.len));
+    for (self.methods.items) |m| m.encode(writer);
+
+    try writer.writeIntBig(u16, @intCast(u16, self.attributes.items.len));
+    for (self.attributes.items) |a| try a.encode(writer);
 }
 
 pub fn deinit(self: *ClassFile) void {
@@ -171,4 +237,17 @@ test "Decode ClassFile" {
 
     var cf = try ClassFile.decode(std.testing.allocator, reader);
     defer cf.deinit();
+}
+
+test "Encode ClassFile" {
+    const harness = @import("../test/harness.zig");
+    var reader = harness.hello.fbs().reader();
+
+    var joe_file = try std.fs.cwd().createFile("Hello.class", .{});
+    defer joe_file.close();
+
+    var cf = try ClassFile.decode(std.testing.allocator, reader);
+    defer cf.deinit();
+
+    try cf.encode(joe_file.writer());
 }

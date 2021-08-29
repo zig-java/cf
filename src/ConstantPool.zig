@@ -162,7 +162,7 @@ pub const Utf8Info = struct {
 
     bytes: []u8,
 
-    fn decode(constant_pool: *const ConstantPool, allocator: *std.mem.Allocator, reader: anytype) !Self {
+    pub fn decode(constant_pool: *const ConstantPool, allocator: *std.mem.Allocator, reader: anytype) !Self {
         var length = try reader.readIntBig(u16);
         var bytes = try allocator.alloc(u8, length);
         _ = try reader.readAll(bytes);
@@ -171,6 +171,11 @@ pub const Utf8Info = struct {
             .constant_pool = constant_pool,
             .bytes = bytes,
         };
+    }
+
+    pub fn encode(self: Utf8Info, writer: anytype) !void {
+        try writer.writeIntBig(u16, @intCast(u16, self.bytes.len));
+        try writer.writeAll(self.bytes);
     }
 
     pub fn format(value: Utf8Info, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
@@ -297,4 +302,25 @@ pub const Entry = union(Tag) {
 
     module: ModuleInfo,
     package: PackageInfo,
+
+    pub fn encode(self: Entry, writer: anytype) !void {
+        inline for (@typeInfo(Tag).Enum.fields) |f, i| {
+            const this_tag_value = @field(Tag, f.name);
+            if (@enumToInt(self) == @enumToInt(this_tag_value)) {
+                const T = std.meta.fields(Entry)[i].field_type;
+                var value = @field(self, f.name);
+
+                if (@hasDecl(T, "encode"))
+                    return try @field(value, "encode")(writer);
+
+                inline for (std.meta.fields(T)[1..]) |field| {
+                    switch (@typeInfo(field.field_type)) {
+                        .Int => try writer.writeIntBig(field.field_type, @field(value, field.name)),
+                        .Enum => |info| try writer.writeIntBig(info.tag_type, @enumToInt(@field(value, field.name))),
+                        else => @compileError("Encode not implemented: " ++ @typeName(field.field_type)),
+                    }
+                }
+            }
+        }
+    }
 };
