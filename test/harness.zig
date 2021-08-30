@@ -4,7 +4,7 @@ pub const TestFile = struct {
     data: []const u8,
 
     pub fn init(comptime name: []const u8) TestFile {
-        return .{ .data = @embedFile("cf/test/" ++ name ++ ".class") };
+        return .{ .data = @embedFile(name ++ ".class") };
     }
 
     pub fn fbs(self: TestFile) std.io.FixedBufferStream([]const u8) {

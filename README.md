@@ -5,7 +5,7 @@ Java `.class` file parser for Zig. Mainly extracted from [jaz](https://github.co
 ## Tests
 
 ```bash
-javac test/cf/test/*.java
+javac test/*.java
 zig test cf.zig
 ```
 
