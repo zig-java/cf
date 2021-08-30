@@ -56,7 +56,7 @@ pub fn getUtf8Index(self: *ConstantPool, bytes: []const u8) !u16 {
     } else {
         var entry = try self.entries.addOne();
         get_or_put_output.value_ptr.* = @intCast(u16, self.entries.items.len);
-        entry.utf8.bytes = try std.mem.dupe(self.entries.allocator, u8, bytes);
+        entry.* = Entry{ .utf8 = .{ .constant_pool = self, .bytes = try std.mem.dupe(self.entries.allocator, u8, bytes) } };
         return get_or_put_output.value_ptr.*;
     }
 }
