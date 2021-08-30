@@ -5,11 +5,13 @@ const ConstantPool = @This();
 entries: std.ArrayList(Entry),
 utf8_entries_map: std.StringHashMap(u16),
 
-pub fn init(allocator: *std.mem.Allocator) ConstantPool {
-    return ConstantPool{
+pub fn init(allocator: *std.mem.Allocator) !*ConstantPool {
+    var c = try allocator.create(ConstantPool);
+    c.* = ConstantPool{
         .entries = std.ArrayList(Entry).init(allocator),
         .utf8_entries_map = std.StringHashMap(u16).init(allocator),
     };
+    return c;
 }
 
 pub fn get(self: ConstantPool, index: u16) Entry {
@@ -25,6 +27,7 @@ pub fn deinit(self: *ConstantPool) void {
     }
     self.entries.deinit();
     self.utf8_entries_map.deinit();
+    self.entries.allocator.destroy(self);
 }
 
 pub fn Serialize(comptime T: type) type {

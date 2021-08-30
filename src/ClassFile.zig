@@ -39,7 +39,7 @@ major_version: u16,
 /// The constant_pool is a table of structures ([§4.4](https://docs.oracle.com/javase/specs/jvms/se16/html/jvms-4.html#jvms-4.4)) representing various string constants, class and interface names, field names, and other constants that are referred to within the ClassFile structure and its substructures
 ///
 /// The constant_pool table is indexed from 1 to ConstantPoolcount - 1
-constant_pool: ConstantPool,
+constant_pool: *ConstantPool,
 /// The value of the access_flags item is a mask of flags used to denote access permissions to and properties of this class or interface. The interpretation of each flag, when set, is specified in [Table 4.1-B](https://docs.oracle.com/javase/specs/jvms/se16/html/jvms-4.html#jvms-4.1-200-E.1)
 access_flags: AccessFlags,
 /// The value of the this_class item must be a valid index into the constant_pool table and the entry at that index must be a CONSTANT_Class_info structure ([§4.4.1](https://docs.oracle.com/javase/specs/jvms/se16/html/jvms-4.html#jvms-4.4.1)) representing the class or interface defined by this class file
@@ -70,7 +70,7 @@ pub fn decode(allocator: *std.mem.Allocator, reader: anytype) !ClassFile {
     var minor_version = try reader.readIntBig(u16);
     var major_version = try reader.readIntBig(u16);
 
-    var constant_pool = ConstantPool.init(allocator);
+    var constant_pool = try ConstantPool.init(allocator);
     var z = (try reader.readIntBig(u16)) - 1;
     try constant_pool.entries.ensureTotalCapacity(z);
     constant_pool.entries.items.len = z;
@@ -103,12 +103,12 @@ pub fn decode(allocator: *std.mem.Allocator, reader: anytype) !ClassFile {
     var field_count = try reader.readIntBig(u16);
     var fieldss = try std.ArrayList(FieldInfo).initCapacity(allocator, field_count);
     fieldss.items.len = field_count;
-    for (fieldss.items) |*f| f.* = try FieldInfo.decode(&constant_pool, allocator, reader);
+    for (fieldss.items) |*f| f.* = try FieldInfo.decode(constant_pool, allocator, reader);
 
     var method_count = try reader.readIntBig(u16);
     var methodss = try std.ArrayList(MethodInfo).initCapacity(allocator, method_count);
     methodss.items.len = method_count;
-    for (methodss.items) |*m| m.* = try MethodInfo.decode(&constant_pool, allocator, reader);
+    for (methodss.items) |*m| m.* = try MethodInfo.decode(constant_pool, allocator, reader);
 
     // var attributess = try std.ArrayList(attributes.AttributeInfo).initCapacity(allocator, try reader.readIntBig(u16));
     // for (attributess.items) |*a| a.* = try attributes.AttributeInfo.decode(&constant_pool, allocator, reader);
@@ -117,7 +117,7 @@ pub fn decode(allocator: *std.mem.Allocator, reader: anytype) !ClassFile {
     var attributes_index: usize = 0;
     var attributess = std.ArrayList(attributes.AttributeInfo).init(allocator);
     while (attributes_index < attributes_length) : (attributes_index += 1) {
-        var decoded = try attributes.AttributeInfo.decode(&constant_pool, allocator, reader);
+        var decoded = try attributes.AttributeInfo.decode(constant_pool, allocator, reader);
         if (decoded == .unknown) {
             attributes_length -= 1;
             continue;
