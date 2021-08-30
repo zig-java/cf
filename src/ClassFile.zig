@@ -74,17 +74,7 @@ pub fn decode(allocator: *std.mem.Allocator, reader: anytype) !ClassFile {
     var z = (try reader.readIntBig(u16)) - 1;
     try constant_pool.entries.ensureTotalCapacity(z);
     constant_pool.entries.items.len = z;
-
-    var constant_pool_index: usize = 0;
-    while (constant_pool_index < z) : (constant_pool_index += 1) {
-        var cp = try constant_pool.decodeEntry(allocator, reader);
-        constant_pool.entries.items[constant_pool_index] = cp;
-
-        // Doubles and longs take up two slots because Java is bad (https://docs.oracle.com/javase/specs/jvms/se16/html/jvms-4.html#jvms-4.10.2.3)
-        if (cp == .double or cp == .long) {
-            constant_pool_index += 1;
-        }
-    }
+    try constant_pool.decodeEntries(allocator, reader);
 
     var access_flags_u = try reader.readIntBig(u16);
     var access_flags = AccessFlags{
@@ -194,7 +184,7 @@ pub fn encode(self: *const ClassFile, writer: anytype) !void {
     for (self.attributes.items) |a| try a.encode(writer);
 }
 
-pub fn deinit(self: ClassFile) void {
+pub fn deinit(self: *ClassFile) void {
     self.constant_pool.deinit();
     self.interfaces.deinit();
 

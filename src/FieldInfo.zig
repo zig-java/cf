@@ -18,7 +18,7 @@ pub const AccessFlags = struct {
     enum_member: bool = false,
 };
 
-constant_pool: *const ConstantPool,
+constant_pool: *ConstantPool,
 
 access_flags: AccessFlags,
 name_index: u16,
@@ -33,7 +33,7 @@ pub fn getDescriptor(self: FieldInfo) ConstantPool.Utf8Info {
     return self.constant_pool.get(self.descriptor_index).utf8;
 }
 
-pub fn decode(constant_pool: *const ConstantPool, allocator: *std.mem.Allocator, reader: anytype) !FieldInfo {
+pub fn decode(constant_pool: *ConstantPool, allocator: *std.mem.Allocator, reader: anytype) !FieldInfo {
     var access_flags_u = try reader.readIntBig(u16);
     var name_index = try reader.readIntBig(u16);
     var descriptor_index = try reader.readIntBig(u16);

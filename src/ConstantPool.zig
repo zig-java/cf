@@ -3,16 +3,20 @@ const std = @import("std");
 const ConstantPool = @This();
 
 entries: std.ArrayList(Entry),
+utf8_entries_map: std.StringHashMap(u16),
 
 pub fn init(allocator: *std.mem.Allocator) ConstantPool {
-    return ConstantPool{ .entries = std.ArrayList(Entry).init(allocator) };
+    return ConstantPool{
+        .entries = std.ArrayList(Entry).init(allocator),
+        .utf8_entries_map = std.StringHashMap(u16).init(allocator),
+    };
 }
 
 pub fn get(self: ConstantPool, index: u16) Entry {
     return self.entries.items[index - 1];
 }
 
-pub fn deinit(self: ConstantPool) void {
+pub fn deinit(self: *ConstantPool) void {
     for (self.entries.items) |entry| {
         switch (entry) {
             .utf8 => |info| self.entries.allocator.free(info.bytes),
@@ -20,6 +24,7 @@ pub fn deinit(self: ConstantPool) void {
         }
     }
     self.entries.deinit();
+    self.utf8_entries_map.deinit();
 }
 
 pub fn Serialize(comptime T: type) type {
@@ -39,6 +44,37 @@ pub fn Serialize(comptime T: type) type {
             return value;
         }
     };
+}
+
+pub fn getUtf8Index(self: *ConstantPool, bytes: []const u8) !u16 {
+    var get_or_put_output = try self.utf8_entries_map.getOrPut(bytes);
+    if (get_or_put_output.found_existing) {
+        return get_or_put_output.value_ptr.*;
+    } else {
+        var entry = try self.entries.addOne();
+        get_or_put_output.value_ptr.* = @intCast(u16, self.entries.items.len);
+        entry.utf8.bytes = try std.mem.dupe(self.entries.allocator, u8, bytes);
+        return get_or_put_output.value_ptr.*;
+    }
+}
+
+pub fn decodeEntries(self: *ConstantPool, allocator: *std.mem.Allocator, reader: anytype) !void {
+    var constant_pool_index: u16 = 0;
+    while (constant_pool_index < self.entries.items.len) : (constant_pool_index += 1) {
+        var cp = try self.decodeEntry(allocator, reader);
+        if (cp == .utf8) {
+            var get_or_put_output = try self.utf8_entries_map.getOrPut(cp.utf8.bytes);
+            if (!get_or_put_output.found_existing) {
+                get_or_put_output.value_ptr.* = constant_pool_index + 1;
+            }
+        }
+        self.entries.items[constant_pool_index] = cp;
+
+        // Doubles and longs take up two slots because Java is bad (https://docs.oracle.com/javase/specs/jvms/se16/html/jvms-4.html#jvms-4.10.2.3)
+        if (cp == .double or cp == .long) {
+            constant_pool_index += 1;
+        }
+    }
 }
 
 pub fn decodeEntry(self: ConstantPool, allocator: *std.mem.Allocator, reader: anytype) !Entry {

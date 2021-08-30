@@ -8,7 +8,7 @@ pub const AttributeInfo = union(enum) {
     code: CodeAttribute,
     unknown: void,
 
-    pub fn decode(constant_pool: *const ConstantPool, allocator: *std.mem.Allocator, reader: anytype) anyerror!AttributeInfo {
+    pub fn decode(constant_pool: *ConstantPool, allocator: *std.mem.Allocator, reader: anytype) anyerror!AttributeInfo {
         var attribute_name_index = try reader.readIntBig(u16);
         var attribute_length = try reader.readIntBig(u32);
 
@@ -23,7 +23,7 @@ pub const AttributeInfo = union(enum) {
             if (AttributeMap.get(name) != null)
                 if (std.mem.eql(u8, AttributeMap.get(name).?, d.name)) {
                     return @unionInit(AttributeInfo, d.name, if (d.field_type == void) {} else z: {
-                        var value = try @field(d.field_type, "decode")(constant_pool, allocator, fbs.reader(), attribute_name_index, attribute_length);
+                        var value = try @field(d.field_type, "decode")(constant_pool, allocator, fbs.reader());
                         break :z value;
                     });
                 };
@@ -83,9 +83,7 @@ pub const ExceptionTableEntry = packed struct {
 };
 
 pub const CodeAttribute = struct {
-    constant_pool: *const ConstantPool,
-    attribute_name_index: u16,
-    attribute_length: u32,
+    constant_pool: *ConstantPool,
 
     max_stack: u16,
     max_locals: u16,
@@ -95,12 +93,11 @@ pub const CodeAttribute = struct {
 
     attributes: std.ArrayList(AttributeInfo),
 
-    pub fn decode(constant_pool: *const ConstantPool, allocator: *std.mem.Allocator, reader: anytype, attribute_name_index: u16, attribute_length: u32) !CodeAttribute {
+    pub fn decode(constant_pool: *ConstantPool, allocator: *std.mem.Allocator, reader: anytype) !CodeAttribute {
         var max_stack = try reader.readIntBig(u16);
         var max_locals = try reader.readIntBig(u16);
 
         var code_length = try reader.readIntBig(u32);
-        // var code = try allocator.alloc(u8, code_length);
         var code = try std.ArrayList(u8).initCapacity(allocator, code_length);
         code.items.len = code_length;
         _ = try reader.readAll(code.items);
@@ -125,8 +122,6 @@ pub const CodeAttribute = struct {
 
         return CodeAttribute{
             .constant_pool = constant_pool,
-            .attribute_name_index = attribute_name_index,
-            .attribute_length = attribute_length,
 
             .max_stack = max_stack,
             .max_locals = max_locals,
@@ -146,7 +141,7 @@ pub const CodeAttribute = struct {
     }
 
     pub fn encode(self: CodeAttribute, writer: anytype) anyerror!void {
-        try writer.writeIntBig(u16, self.attribute_name_index);
+        try writer.writeIntBig(u16, try self.constant_pool.getUtf8Index("Code"));
         // try writer.writeIntBig(u32, self.attribute_length);
         try writer.writeIntBig(u32, self.calcAttrLen());
 
