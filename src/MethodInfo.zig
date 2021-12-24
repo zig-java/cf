@@ -41,7 +41,7 @@ pub fn format(self: MethodInfo, comptime fmt: []const u8, options: std.fmt.Forma
     try writer.print("MethodInfo({s} {s})", .{ self.getName().bytes, self.getDescriptor().bytes });
 }
 
-pub fn decode(constant_pool: *ConstantPool, allocator: *std.mem.Allocator, reader: anytype) !MethodInfo {
+pub fn decode(constant_pool: *ConstantPool, allocator: std.mem.Allocator, reader: anytype) !MethodInfo {
     var access_flags_u = try reader.readIntBig(u16);
     var name_index = try reader.readIntBig(u16);
     var descriptor_index = try reader.readIntBig(u16);

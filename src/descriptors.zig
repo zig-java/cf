@@ -13,7 +13,7 @@ pub const MethodDescriptor = struct {
         try self.return_type.stringify(writer);
     }
 
-    pub fn deinit(self: *Self, allocator: *std.mem.Allocator) void {
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
         for (self.parameters) |*param| param.*.deinit(allocator);
         allocator.free(self.parameters);
         self.return_type.deinit(allocator);
@@ -108,7 +108,7 @@ pub const Descriptor = union(enum) {
         try self.humanStringify(buf.writer());
     }
 
-    pub fn deinit(self: *Self, allocator: *std.mem.Allocator) void {
+    pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
         switch (self.*) {
             .object => |*o| allocator.free(o.*),
             .array => |*a| a.*.deinit(allocator),
@@ -120,13 +120,13 @@ pub const Descriptor = union(enum) {
     }
 };
 
-fn c(allocator: *std.mem.Allocator, d: Descriptor) !*Descriptor {
+fn c(allocator: std.mem.Allocator, d: Descriptor) !*Descriptor {
     var x = try allocator.create(Descriptor);
     x.* = d;
     return x;
 }
 
-fn parse_(allocator: *std.mem.Allocator, reader: anytype) anyerror!?*Descriptor {
+fn parse_(allocator: std.mem.Allocator, reader: anytype) anyerror!?*Descriptor {
     var kind = try reader.readByte();
     switch (kind) {
         'B' => return try c(allocator, .byte),
@@ -173,11 +173,11 @@ fn parse_(allocator: *std.mem.Allocator, reader: anytype) anyerror!?*Descriptor 
     }
 }
 
-pub fn parse(allocator: *std.mem.Allocator, reader: anytype) anyerror!*Descriptor {
+pub fn parse(allocator: std.mem.Allocator, reader: anytype) anyerror!*Descriptor {
     return (try parse_(allocator, reader)).?;
 }
 
-pub fn parseString(allocator: *std.mem.Allocator, string: []const u8) !*Descriptor {
+pub fn parseString(allocator: std.mem.Allocator, string: []const u8) !*Descriptor {
     var fbs = std.io.fixedBufferStream(string);
     return parse(allocator, fbs.reader());
 }

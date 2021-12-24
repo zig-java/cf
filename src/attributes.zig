@@ -8,7 +8,7 @@ pub const AttributeInfo = union(enum) {
     code: CodeAttribute,
     unknown: void,
 
-    pub fn decode(constant_pool: *ConstantPool, allocator: *std.mem.Allocator, reader: anytype) anyerror!AttributeInfo {
+    pub fn decode(constant_pool: *ConstantPool, allocator: std.mem.Allocator, reader: anytype) anyerror!AttributeInfo {
         var attribute_name_index = try reader.readIntBig(u16);
         var attribute_length = try reader.readIntBig(u32);
 
@@ -93,7 +93,7 @@ pub const CodeAttribute = struct {
 
     attributes: std.ArrayList(AttributeInfo),
 
-    pub fn decode(constant_pool: *ConstantPool, allocator: *std.mem.Allocator, reader: anytype) !CodeAttribute {
+    pub fn decode(constant_pool: *ConstantPool, allocator: std.mem.Allocator, reader: anytype) !CodeAttribute {
         var max_stack = try reader.readIntBig(u16);
         var max_locals = try reader.readIntBig(u16);
 

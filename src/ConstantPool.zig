@@ -5,7 +5,7 @@ const ConstantPool = @This();
 entries: std.ArrayList(Entry),
 utf8_entries_map: std.StringHashMap(u16),
 
-pub fn init(allocator: *std.mem.Allocator) !*ConstantPool {
+pub fn init(allocator: std.mem.Allocator) !*ConstantPool {
     var c = try allocator.create(ConstantPool);
     c.* = ConstantPool{
         .entries = std.ArrayList(Entry).init(allocator),
@@ -56,12 +56,12 @@ pub fn getUtf8Index(self: *ConstantPool, bytes: []const u8) !u16 {
     } else {
         var entry = try self.entries.addOne();
         get_or_put_output.value_ptr.* = @intCast(u16, self.entries.items.len);
-        entry.* = Entry{ .utf8 = .{ .constant_pool = self, .bytes = try std.mem.dupe(self.entries.allocator, u8, bytes) } };
+        entry.* = Entry{ .utf8 = .{ .constant_pool = self, .bytes = try self.entries.allocator.dupe(u8, bytes) } };
         return get_or_put_output.value_ptr.*;
     }
 }
 
-pub fn decodeEntries(self: *ConstantPool, allocator: *std.mem.Allocator, reader: anytype) !void {
+pub fn decodeEntries(self: *ConstantPool, allocator: std.mem.Allocator, reader: anytype) !void {
     var constant_pool_index: u16 = 0;
     while (constant_pool_index < self.entries.items.len) : (constant_pool_index += 1) {
         var cp = try self.decodeEntry(allocator, reader);
@@ -80,7 +80,7 @@ pub fn decodeEntries(self: *ConstantPool, allocator: *std.mem.Allocator, reader:
     }
 }
 
-pub fn decodeEntry(self: ConstantPool, allocator: *std.mem.Allocator, reader: anytype) !Entry {
+pub fn decodeEntry(self: ConstantPool, allocator: std.mem.Allocator, reader: anytype) !Entry {
     var tag = try reader.readIntBig(u8);
     inline for (@typeInfo(Tag).Enum.fields) |f, i| {
         const this_tag_value = @field(Tag, f.name);
@@ -185,12 +185,12 @@ pub const NameAndTypeInfo = struct {
     /// Points to a `Utf8Info` representing a field or method descriptor
     descriptor_index: u16,
 
-    pub fn getName(self: Self, constant_pool: []Entry) Utf8Info {
-        return constant_pool[self.name_index - 1].utf8;
+    pub fn getName(self: Self) Utf8Info {
+        return self.constant_pool.get(self.name_index).utf8;
     }
 
-    pub fn getDescriptor(self: Self, constant_pool: []Entry) Utf8Info {
-        return constant_pool[self.descriptor_index - 1].utf8;
+    pub fn getDescriptor(self: Self) Utf8Info {
+        return self.constant_pool.get(self.descriptor_index).utf8;
     }
 };
 
@@ -201,7 +201,7 @@ pub const Utf8Info = struct {
 
     bytes: []u8,
 
-    pub fn decode(constant_pool: *const ConstantPool, allocator: *std.mem.Allocator, reader: anytype) !Self {
+    pub fn decode(constant_pool: *const ConstantPool, allocator: std.mem.Allocator, reader: anytype) !Self {
         var length = try reader.readIntBig(u16);
         var bytes = try allocator.alloc(u8, length);
         _ = try reader.readAll(bytes);
@@ -224,7 +224,17 @@ pub const Utf8Info = struct {
     }
 };
 
-pub const ReferenceKind = enum(u8) { get_field = 1, get_static = 2, put_field = 3, put_static = 4, invoke_virtual = 5, invoke_static = 6, invoke_special = 7, new_invoke_special = 8, invoke_interface = 9 };
+pub const ReferenceKind = enum(u8) {
+    get_field = 1,
+    get_static = 2,
+    put_field = 3,
+    put_static = 4,
+    invoke_virtual = 5,
+    invoke_static = 6,
+    invoke_special = 7,
+    new_invoke_special = 8,
+    invoke_interface = 9,
+};
 
 pub const MethodHandleInfo = struct {
     const Self = @This();
@@ -239,14 +249,14 @@ pub const MethodHandleInfo = struct {
     /// 9 - Must point to interfacemethodref
     reference_index: u16,
 
-    // fn parse(allocator: *std.mem.Allocator, reader: anytype) !Self {
+    // fn parse(allocator: std.mem.Allocator, reader: anytype) !Self {
     //     return Self{
     //         .reference_kind = @intToEnum(ReferenceKind, try reader.readIntBig(u8)),
     //         .reference_index = try reader.readIntBig(u16),
     //     };
     // }
 
-    pub fn getReference(self: Self, constant_pool: []Entry) Info {
+    pub fn getReference(self: Self, constant_pool: []Entry) Entry {
         var ref = constant_pool[self.reference_index - 1];
         switch (self.reference_kind) {
             .get_field, .get_static, .put_field, .put_static => std.debug.assert(std.meta.activeTag(ref) == .fieldref),
@@ -279,7 +289,7 @@ pub const DynamicInfo = struct {
     bootstrap_method_attr_index: u16,
     name_and_type_index: u16,
 
-    pub fn getNameAndTypeInfo(self: Self, constant_pool: []Entry) NameAndTypeInfo {
+    pub fn getNameAndTypeInfo(self: DynamicInfo, constant_pool: []Entry) NameAndTypeInfo {
         return constant_pool[self.name_and_type_index - 1].name_and_type;
     }
 };
@@ -290,7 +300,7 @@ pub const InvokeDynamicInfo = struct {
     bootstrap_method_attr_index: u16,
     name_and_type_index: u16,
 
-    pub fn getNameAndTypeInfo(self: Self, constant_pool: []Entry) NameAndTypeInfo {
+    pub fn getNameAndTypeInfo(self: InvokeDynamicInfo, constant_pool: []Entry) NameAndTypeInfo {
         return constant_pool[self.name_and_type_index - 1].name_and_type;
     }
 };
@@ -300,7 +310,7 @@ pub const ModuleInfo = struct {
 
     name_index: u16,
 
-    pub fn getName(self: Self, constant_pool: []Entry) Utf8Info {
+    pub fn getName(self: ModuleInfo, constant_pool: []Entry) Utf8Info {
         return constant_pool[self.name_index - 1].utf8;
     }
 };
@@ -310,7 +320,7 @@ pub const PackageInfo = struct {
 
     name_index: u16,
 
-    pub fn getName(self: Self, constant_pool: []Entry) Utf8Info {
+    pub fn getName(self: PackageInfo, constant_pool: []Entry) Utf8Info {
         return constant_pool[self.name_index - 1].utf8;
     }
 };

@@ -63,7 +63,7 @@ pub fn getConstantPoolEntry(self: ClassFile, index: u16) ConstantPool.Entry {
     return self.constant_pool[index - 1];
 }
 
-pub fn decode(allocator: *std.mem.Allocator, reader: anytype) !ClassFile {
+pub fn decode(allocator: std.mem.Allocator, reader: anytype) !ClassFile {
     var magic = try reader.readIntBig(u32);
     if (magic != 0xCAFEBABE) return error.BadMagicValue;
 
@@ -224,13 +224,13 @@ pub fn getJavaSEVersion(self: ClassFile) GetJavaSEVersionError!JavaSEVersion {
     };
 }
 
-// test "Decode ClassFile" {
-//     const harness = @import("../test/harness.zig");
-//     var reader = harness.hello.fbs().reader();
+test "Decode ClassFile" {
+    const harness = @import("../test/harness.zig");
+    var reader = harness.hello.fbs().reader();
 
-//     var cf = try ClassFile.decode(std.testing.allocator, reader);
-//     defer cf.deinit();
-// }
+    var cf = try ClassFile.decode(std.testing.allocator, reader);
+    defer cf.deinit();
+}
 
 test "Encode ClassFile" {
     const harness = @import("../test/harness.zig");
