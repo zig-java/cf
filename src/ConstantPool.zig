@@ -2,15 +2,18 @@ const std = @import("std");
 
 const ConstantPool = @This();
 
-entries: std.ArrayList(Entry),
-utf8_entries_map: std.StringHashMap(u16),
+allocator: std.mem.Allocator,
+entries: std.ArrayListUnmanaged(Entry),
+utf8_entries_map: std.StringHashMapUnmanaged(u16),
 
-pub fn init(allocator: std.mem.Allocator) !*ConstantPool {
+pub fn init(allocator: std.mem.Allocator, entry_count: u16) !*ConstantPool {
     var c = try allocator.create(ConstantPool);
     c.* = ConstantPool{
-        .entries = std.ArrayList(Entry).init(allocator),
-        .utf8_entries_map = std.StringHashMap(u16).init(allocator),
+        .allocator = allocator,
+        .entries = try std.ArrayListUnmanaged(Entry).initCapacity(allocator, entry_count),
+        .utf8_entries_map = std.StringHashMapUnmanaged(u16){},
     };
+    c.entries.items.len = entry_count;
     return c;
 }
 
@@ -21,13 +24,13 @@ pub fn get(self: ConstantPool, index: u16) Entry {
 pub fn deinit(self: *ConstantPool) void {
     for (self.entries.items) |entry| {
         switch (entry) {
-            .utf8 => |info| self.entries.allocator.free(info.bytes),
+            .utf8 => |info| self.allocator.free(info.bytes),
             else => {},
         }
     }
-    self.entries.deinit();
-    self.utf8_entries_map.deinit();
-    self.entries.allocator.destroy(self);
+    self.entries.deinit(self.allocator);
+    self.utf8_entries_map.deinit(self.allocator);
+    self.allocator.destroy(self);
 }
 
 pub fn Serialize(comptime T: type) type {
@@ -49,24 +52,26 @@ pub fn Serialize(comptime T: type) type {
     };
 }
 
-pub fn getUtf8Index(self: *ConstantPool, bytes: []const u8) !u16 {
-    var get_or_put_output = try self.utf8_entries_map.getOrPut(bytes);
+/// Locate a Utf8Info entry that has the value `bytes`
+/// Useful for attributes that need an entry describing their name
+pub fn locateUtf8Entry(self: *ConstantPool, bytes: []const u8) !u16 {
+    var get_or_put_output = try self.utf8_entries_map.getOrPut(self.allocator, bytes);
     if (get_or_put_output.found_existing) {
         return get_or_put_output.value_ptr.*;
     } else {
-        var entry = try self.entries.addOne();
+        var entry = try self.entries.addOne(self.allocator);
         get_or_put_output.value_ptr.* = @intCast(u16, self.entries.items.len);
-        entry.* = Entry{ .utf8 = .{ .constant_pool = self, .bytes = try self.entries.allocator.dupe(u8, bytes) } };
+        entry.* = Entry{ .utf8 = .{ .constant_pool = self, .bytes = try self.allocator.dupe(u8, bytes) } };
         return get_or_put_output.value_ptr.*;
     }
 }
 
-pub fn decodeEntries(self: *ConstantPool, allocator: std.mem.Allocator, reader: anytype) !void {
+pub fn decodeEntries(self: *ConstantPool, reader: anytype) !void {
     var constant_pool_index: u16 = 0;
     while (constant_pool_index < self.entries.items.len) : (constant_pool_index += 1) {
-        var cp = try self.decodeEntry(allocator, reader);
+        var cp = try self.decodeEntry(reader);
         if (cp == .utf8) {
-            var get_or_put_output = try self.utf8_entries_map.getOrPut(cp.utf8.bytes);
+            var get_or_put_output = try self.utf8_entries_map.getOrPut(self.allocator, cp.utf8.bytes);
             if (!get_or_put_output.found_existing) {
                 get_or_put_output.value_ptr.* = constant_pool_index + 1;
             }
@@ -80,13 +85,13 @@ pub fn decodeEntries(self: *ConstantPool, allocator: std.mem.Allocator, reader: 
     }
 }
 
-pub fn decodeEntry(self: ConstantPool, allocator: std.mem.Allocator, reader: anytype) !Entry {
+pub fn decodeEntry(self: ConstantPool, reader: anytype) !Entry {
     var tag = try reader.readIntBig(u8);
     inline for (@typeInfo(Tag).Enum.fields) |f, i| {
         const this_tag_value = @field(Tag, f.name);
         if (tag == @enumToInt(this_tag_value)) {
             const T = std.meta.fields(Entry)[i].field_type;
-            var value = if (@hasDecl(T, "decode")) try @field(T, "decode")(&self, allocator, reader) else try Serialize(T).decode(&self, reader);
+            var value = if (@hasDecl(T, "decode")) try @field(T, "decode")(&self, reader) else try Serialize(T).decode(&self, reader);
             return @unionInit(Entry, f.name, value);
         }
     }
@@ -201,9 +206,9 @@ pub const Utf8Info = struct {
 
     bytes: []u8,
 
-    pub fn decode(constant_pool: *const ConstantPool, allocator: std.mem.Allocator, reader: anytype) !Self {
+    pub fn decode(constant_pool: *const ConstantPool, reader: anytype) !Self {
         var length = try reader.readIntBig(u16);
-        var bytes = try allocator.alloc(u8, length);
+        var bytes = try constant_pool.allocator.alloc(u8, length);
         _ = try reader.readAll(bytes);
 
         return Self{

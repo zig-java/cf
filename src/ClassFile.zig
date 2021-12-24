@@ -70,11 +70,11 @@ pub fn decode(allocator: std.mem.Allocator, reader: anytype) !ClassFile {
     var minor_version = try reader.readIntBig(u16);
     var major_version = try reader.readIntBig(u16);
 
-    var constant_pool = try ConstantPool.init(allocator);
-    var z = (try reader.readIntBig(u16)) - 1;
-    try constant_pool.entries.ensureTotalCapacity(z);
-    constant_pool.entries.items.len = z;
-    try constant_pool.decodeEntries(allocator, reader);
+    var entry_count = (try reader.readIntBig(u16)) - 1;
+    var constant_pool = try ConstantPool.init(allocator, entry_count);
+    // try constant_pool.entries.ensureTotalCapacity(constant_pool_length);
+    // constant_pool.entries.items.len = z;
+    try constant_pool.decodeEntries(reader);
 
     var access_flags_u = try reader.readIntBig(u16);
     var access_flags = AccessFlags{

@@ -1,7 +1,13 @@
 const std = @import("std");
 const ConstantPool = @import("ConstantPool.zig");
 
-const AttributeMap = std.ComptimeStringMap([]const u8, .{.{ "Code", "code" }});
+const logger = std.log.scoped(.cf_attributes);
+
+// TODO: Rearrange for performance
+
+const AttributeMap = std.ComptimeStringMap([]const u8, .{
+    .{ "Code", "code" },
+});
 
 // TODO: Implement all attribute types
 pub const AttributeInfo = union(enum) {
@@ -29,27 +35,46 @@ pub const AttributeInfo = union(enum) {
                 };
         }
 
+        logger.err("Could not decode attribute: {s}", .{name});
         return .unknown;
     }
 
     pub fn calcAttrLen(self: AttributeInfo) u32 {
-        return switch (self) {
-            .code => |c| c.calcAttrLen(),
-            else => 0,
-        };
+        inline for (std.meta.fields(AttributeInfo)) |field| {
+            if (field.field_type == void) continue;
+
+            if (std.mem.eql(u8, @tagName(std.meta.activeTag(self)), field.name)) {
+                return @field(self, field.name).calcAttrLen();
+            }
+        }
+
+        unreachable;
     }
 
     pub fn deinit(self: AttributeInfo) void {
-        return switch (self) {
-            .code => |c| c.deinit(),
-            else => {},
-        };
+        inline for (std.meta.fields(AttributeInfo)) |field| {
+            if (field.field_type == void) continue;
+
+            if (std.mem.eql(u8, @tagName(std.meta.activeTag(self)), field.name)) {
+                return @field(self, field.name).deinit();
+            }
+        }
+
+        unreachable;
     }
 
     pub fn encode(self: AttributeInfo, writer: anytype) !void {
-        switch (self) {
-            .unknown => return,
-            .code => |c| try c.encode(writer),
+        inline for (std.meta.fields(AttributeInfo)) |field| {
+            if (field.field_type == void) continue;
+
+            if (std.mem.eql(u8, @tagName(std.meta.activeTag(self)), field.name)) {
+                var attr = @field(self, field.name);
+
+                try attr.encode(writer);
+
+                try writer.writeIntBig(u16, try attr.constant_pool.locateUtf8Entry(@field(field.field_type, "name")));
+                try writer.writeIntBig(u32, attr.calcAttrLen());
+            }
         }
     }
 };
@@ -64,9 +89,13 @@ pub const ExceptionTableEntry = packed struct {
     /// Index into constant pool
     catch_type: u16,
 
-    // TODO: Fix this extremely bad, nasty, dangerous code!!
     pub fn decode(reader: anytype) !ExceptionTableEntry {
-        return try reader.readStruct(ExceptionTableEntry);
+        var entry: ExceptionTableEntry = undefined;
+        entry.start_pc = try reader.readIntBig(u16);
+        entry.end_pc = try reader.readIntBig(u16);
+        entry.handler_pc = try reader.readIntBig(u16);
+        entry.catch_type = try reader.readIntBig(u16);
+        return entry;
     }
 
     pub fn calcAttrLen(self: ExceptionTableEntry) u32 {
@@ -83,6 +112,8 @@ pub const ExceptionTableEntry = packed struct {
 };
 
 pub const CodeAttribute = struct {
+    pub const name = "Code";
+
     constant_pool: *ConstantPool,
 
     max_stack: u16,
@@ -141,10 +172,6 @@ pub const CodeAttribute = struct {
     }
 
     pub fn encode(self: CodeAttribute, writer: anytype) anyerror!void {
-        try writer.writeIntBig(u16, try self.constant_pool.getUtf8Index("Code"));
-        // try writer.writeIntBig(u32, self.attribute_length);
-        try writer.writeIntBig(u32, self.calcAttrLen());
-
         try writer.writeIntBig(u16, self.max_stack);
         try writer.writeIntBig(u16, self.max_locals);
 
