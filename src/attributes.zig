@@ -7,6 +7,8 @@ const logger = std.log.scoped(.cf_attributes);
 pub const AttributeInfo = union(enum) {
     code: CodeAttribute,
     line_number_table: LineNumberTableAttribute,
+    source_file: SourceFileAttribute,
+    exceptions: ExceptionsAttribute,
     unknown: void,
 
     pub fn decode(constant_pool: *ConstantPool, allocator: std.mem.Allocator, reader: anytype) anyerror!AttributeInfo {
@@ -236,5 +238,74 @@ pub const LineNumberTableAttribute = struct {
 
     pub fn deinit(self: *LineNumberTableAttribute) void {
         self.line_number_table.deinit(self.allocator);
+    }
+};
+
+pub const SourceFileAttribute = struct {
+    pub const name = "SourceFile";
+
+    allocator: std.mem.Allocator,
+    constant_pool: *ConstantPool,
+
+    source_file_index: u16,
+
+    pub fn decode(constant_pool: *ConstantPool, allocator: std.mem.Allocator, reader: anytype) !SourceFileAttribute {
+        return SourceFileAttribute{
+            .allocator = allocator,
+            .constant_pool = constant_pool,
+
+            .source_file_index = try reader.readIntBig(u16),
+        };
+    }
+
+    pub fn calcAttrLen(self: SourceFileAttribute) u32 {
+        _ = self;
+        return 2;
+    }
+
+    pub fn encode(self: SourceFileAttribute, writer: anytype) anyerror!void {
+        try writer.writeIntBig(u16, self.source_file_index);
+    }
+
+    pub fn deinit(self: *SourceFileAttribute) void {
+        _ = self;
+    }
+};
+
+pub const ExceptionsAttribute = struct {
+    pub const name = "Exceptions";
+
+    allocator: std.mem.Allocator,
+    constant_pool: *ConstantPool,
+
+    exception_index_table: std.ArrayListUnmanaged(u16),
+
+    pub fn decode(constant_pool: *ConstantPool, allocator: std.mem.Allocator, reader: anytype) !ExceptionsAttribute {
+        var exception_index_table_length = try reader.readIntBig(u16);
+
+        var exception_index_table = try std.ArrayListUnmanaged(u16).initCapacity(allocator, exception_index_table_length);
+        exception_index_table.items.len = exception_index_table_length;
+        for (exception_index_table.items) |*entry| entry.* = try reader.readIntBig(u16);
+
+        return ExceptionsAttribute{
+            .allocator = allocator,
+            .constant_pool = constant_pool,
+
+            .exception_index_table = exception_index_table,
+        };
+    }
+
+    pub fn calcAttrLen(self: ExceptionsAttribute) u32 {
+        var len: u32 = 2 + 2 * @intCast(u32, self.exception_index_table.items.len);
+        return len;
+    }
+
+    pub fn encode(self: ExceptionsAttribute, writer: anytype) anyerror!void {
+        _ = self;
+        _ = writer;
+    }
+
+    pub fn deinit(self: *ExceptionsAttribute) void {
+        self.exception_index_table.deinit(self.allocator);
     }
 };
