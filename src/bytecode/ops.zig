@@ -210,7 +210,7 @@ pub const Opcode = enum(u8) {
     }
 };
 
-pub const LocalIndexOperation = u8;
+pub const LocalIndexOperation = u16; // u16 instead of u8 to account for wide
 pub const ConstantPoolRefOperation = u16;
 pub const BranchToOffsetOperation = i16;
 pub const BranchToOffsetWideOperation = i32;

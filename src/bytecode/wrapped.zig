@@ -14,7 +14,7 @@ pub const BytecodePrimitive = enum {
     double,
     reference,
 
-    pub fn fromShorthand(shorthand: u8) PrimitiveKind {
+    pub fn fromShorthand(shorthand: u8) BytecodePrimitive {
         return switch (shorthand) {
             'a' => .reference,
             'd' => .double,
@@ -22,11 +22,12 @@ pub const BytecodePrimitive = enum {
             'i' => .int,
             'l' => .long,
             's' => .short,
+            'b' => .byte,
             else => @panic("No shorthand!"),
         };
     }
 
-    pub fn toShorthand(self: PrimitiveKind) u8 {
+    pub fn toShorthand(self: BytecodePrimitive) u8 {
         return switch (self) {
             .reference => 'a',
             .double => 'd',
@@ -34,6 +35,7 @@ pub const BytecodePrimitive = enum {
             .int => 'i',
             .long => 'l',
             .short => 's',
+            .byte => 'b',
             else => @panic("No shorthand!"),
         };
     }
@@ -56,10 +58,19 @@ pub const WrappedOperation = union(enum) {
     convert: ConvertOperation,
 
     pub fn wrap(op: ops.Operation) WrappedOperation {
+        @setEvalBranchQuota(10000);
+
         inline for (std.meta.fields(ops.Operation)) |field| {
-            var opcode = @field(ops.Opcode, field.name);
+            comptime var opcode = @field(ops.Opcode, field.name);
             if (std.meta.activeTag(op) == opcode) {
-                if (@enumToInt(opcode) >= 0x85 and @enumToInt(opcode) <= 0x93) {
+                if (comptime field.name.len >= "astore".len and std.mem.eql(u8, field.name[1 .. 1 + "store".len], "store")) {
+                    return .{
+                        .store_local = .{
+                            .kind = BytecodePrimitive.fromShorthand(field.name[0]),
+                            .index = if (field.name.len == "astore".len) @field(op, field.name) else comptime std.fmt.parseInt(u16, field.name["astore_".len..], 10) catch unreachable,
+                        },
+                    };
+                } else if (comptime @enumToInt(opcode) >= 0x85 and @enumToInt(opcode) <= 0x93) {
                     return .{
                         .convert = .{
                             .from = BytecodePrimitive.fromShorthand(field.name[0]),
@@ -71,6 +82,8 @@ pub const WrappedOperation = union(enum) {
                 }
             }
         }
+
+        unreachable;
     }
 };
 
@@ -84,7 +97,26 @@ pub const StoreLocalOperation = struct {
     index: u16,
 };
 
+test "Wrapped: Store" {
+    var istore_op = ops.Operation{ .istore_3 = {} };
+    std.log.err("{s}", .{WrappedOperation.wrap(istore_op)});
+}
+
 pub const ConvertOperation = struct {
     from: BytecodePrimitive,
     to: BytecodePrimitive,
 };
+
+test "Wrapped: Convert" {
+    var i2b_op = ops.Operation{ .i2b = {} };
+    var i2b_wrapped = WrappedOperation.wrap(i2b_op);
+    try std.testing.expect(i2b_wrapped == .convert);
+    try std.testing.expectEqual(BytecodePrimitive.int, i2b_wrapped.convert.from);
+    try std.testing.expectEqual(BytecodePrimitive.byte, i2b_wrapped.convert.to);
+
+    var i2l_op = ops.Operation{ .i2l = {} };
+    var i2l_wrapped = WrappedOperation.wrap(i2l_op);
+    try std.testing.expect(i2l_wrapped == .convert);
+    try std.testing.expectEqual(BytecodePrimitive.int, i2l_wrapped.convert.from);
+    try std.testing.expectEqual(BytecodePrimitive.long, i2l_wrapped.convert.to);
+}
