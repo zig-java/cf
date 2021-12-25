@@ -57,40 +57,23 @@ pub const BytecodePrimitiveValue = union(BytecodePrimitive) {
 };
 
 pub const WrappedOperation = union(enum) {
-    load_local: LoadLocalOperation,
     store_local: StoreLocalOperation,
+    load_local: LoadLocalOperation,
     convert: ConvertOperation,
 
     pub fn wrap(op: ops.Operation) WrappedOperation {
         @setEvalBranchQuota(10000);
 
-        inline for (std.meta.fields(ops.Operation)) |field| {
-            comptime var opcode = @field(ops.Opcode, field.name);
+        inline for (std.meta.fields(ops.Operation)) |operation_field| {
+            comptime var opcode = @field(ops.Opcode, operation_field.name);
             if (std.meta.activeTag(op) == opcode) {
-                if (comptime field.name.len >= "astore".len and std.mem.eql(u8, field.name[1 .. 1 + "store".len], "store")) {
-                    return .{
-                        .store_local = .{
-                            .kind = BytecodePrimitive.fromShorthand(field.name[0]),
-                            .index = if (field.name.len == "astore".len) @field(op, field.name) else comptime std.fmt.parseInt(u16, field.name["astore_".len..], 10) catch unreachable,
-                        },
-                    };
-                } else if (comptime field.name.len >= "aload".len and std.mem.eql(u8, field.name[1 .. 1 + "load".len], "load")) {
-                    return .{
-                        .load_local = .{
-                            .kind = BytecodePrimitive.fromShorthand(field.name[0]),
-                            .index = if (field.name.len == "aload".len) @field(op, field.name) else comptime std.fmt.parseInt(u16, field.name["aload_".len..], 10) catch unreachable,
-                        },
-                    };
-                } else if (comptime @enumToInt(opcode) >= 0x85 and @enumToInt(opcode) <= 0x93) {
-                    return .{
-                        .convert = .{
-                            .from = BytecodePrimitive.fromShorthand(field.name[0]),
-                            .to = BytecodePrimitive.fromShorthand(field.name[2]),
-                        },
-                    };
-                } else {
-                    @panic("Not implemented: " ++ field.name);
+                inline for (std.meta.fields(WrappedOperation)) |wo_field| {
+                    if (comptime wo_field.field_type.matches(opcode, operation_field)) {
+                        return @unionInit(WrappedOperation, wo_field.name, wo_field.field_type.wrap(op, opcode, operation_field));
+                    }
                 }
+
+                @panic("Not implemented: " ++ operation_field.name);
             }
         }
 
@@ -103,26 +86,22 @@ pub const WrappedOperation = union(enum) {
     }
 };
 
-pub const LoadLocalOperation = struct {
-    kind: BytecodePrimitive,
-    index: u16,
-};
-
-test "Wrapped: Load" {
-    var iload_1_op = ops.Operation{ .iload_1 = {} };
-    var iload_1_wrapped = WrappedOperation.wrap(iload_1_op);
-    try std.testing.expectEqual(BytecodePrimitive.int, iload_1_wrapped.load_local.kind);
-    try std.testing.expectEqual(@as(u16, 1), iload_1_wrapped.load_local.index);
-
-    var iload_n_op = ops.Operation{ .iload = 12 };
-    var iload_n_wrapped = WrappedOperation.wrap(iload_n_op);
-    try std.testing.expectEqual(BytecodePrimitive.int, iload_n_wrapped.load_local.kind);
-    try std.testing.expectEqual(@as(u16, 12), iload_n_wrapped.load_local.index);
-}
-
 pub const StoreLocalOperation = struct {
     kind: BytecodePrimitive,
     index: u16,
+
+    fn matches(comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) bool {
+        _ = opcode;
+        return operation_field.name.len >= "astore".len and std.mem.eql(u8, operation_field.name[1 .. 1 + "store".len], "store");
+    }
+
+    fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) StoreLocalOperation {
+        _ = opcode;
+        return .{
+            .kind = BytecodePrimitive.fromShorthand(operation_field.name[0]),
+            .index = if (operation_field.name.len == "astore".len) @field(op, operation_field.name) else comptime std.fmt.parseInt(u16, operation_field.name["astore_".len..], 10) catch unreachable,
+        };
+    }
 };
 
 test "Wrapped: Store" {
@@ -137,9 +116,53 @@ test "Wrapped: Store" {
     try std.testing.expectEqual(@as(u16, 12), istore_n_wrapped.store_local.index);
 }
 
+pub const LoadLocalOperation = struct {
+    kind: BytecodePrimitive,
+    index: u16,
+
+    fn matches(comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) bool {
+        _ = opcode;
+        return operation_field.name.len >= "aload".len and std.mem.eql(u8, operation_field.name[1 .. 1 + "load".len], "load");
+    }
+
+    fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) LoadLocalOperation {
+        _ = opcode;
+        return .{
+            .kind = BytecodePrimitive.fromShorthand(operation_field.name[0]),
+            .index = if (operation_field.name.len == "aload".len) @field(op, operation_field.name) else comptime std.fmt.parseInt(u16, operation_field.name["aload_".len..], 10) catch unreachable,
+        };
+    }
+};
+
+test "Wrapped: Load" {
+    var iload_1_op = ops.Operation{ .iload_1 = {} };
+    var iload_1_wrapped = WrappedOperation.wrap(iload_1_op);
+    try std.testing.expectEqual(BytecodePrimitive.int, iload_1_wrapped.load_local.kind);
+    try std.testing.expectEqual(@as(u16, 1), iload_1_wrapped.load_local.index);
+
+    var iload_n_op = ops.Operation{ .iload = 12 };
+    var iload_n_wrapped = WrappedOperation.wrap(iload_n_op);
+    try std.testing.expectEqual(BytecodePrimitive.int, iload_n_wrapped.load_local.kind);
+    try std.testing.expectEqual(@as(u16, 12), iload_n_wrapped.load_local.index);
+}
+
 pub const ConvertOperation = struct {
     from: BytecodePrimitive,
     to: BytecodePrimitive,
+
+    fn matches(comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) bool {
+        _ = operation_field;
+        return @enumToInt(opcode) >= 0x85 and @enumToInt(opcode) <= 0x93;
+    }
+
+    fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) ConvertOperation {
+        _ = op;
+        _ = opcode;
+        return .{
+            .from = BytecodePrimitive.fromShorthand(operation_field.name[0]),
+            .to = BytecodePrimitive.fromShorthand(operation_field.name[2]),
+        };
+    }
 };
 
 test "Wrapped: Convert" {
