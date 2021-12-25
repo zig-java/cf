@@ -101,10 +101,10 @@ pub fn encode(self: MethodInfo, writer: anytype) !void {
     try writer.writeIntBig(u16, self.descriptor_index);
 
     try writer.writeIntBig(u16, @intCast(u16, self.attributes.items.len));
-    for (self.attributes.items) |att| try att.encode(writer);
+    for (self.attributes.items) |*att| try att.encode(writer);
 }
 
 pub fn deinit(self: MethodInfo) void {
-    for (self.attributes.items) |att| att.deinit();
+    for (self.attributes.items) |*att| att.deinit();
     self.attributes.deinit();
 }

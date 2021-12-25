@@ -185,7 +185,6 @@ pub fn encode(self: *const ClassFile, writer: anytype) !void {
 }
 
 pub fn deinit(self: *ClassFile) void {
-    self.constant_pool.deinit();
     self.interfaces.deinit();
 
     for (self.fields.items) |*fie| fie.deinit();
@@ -196,6 +195,8 @@ pub fn deinit(self: *ClassFile) void {
 
     for (self.attributes.items) |*att| att.deinit();
     self.attributes.deinit();
+
+    self.constant_pool.deinit();
 }
 
 pub const JavaSEVersion = enum { @"1.1", @"1.2", @"1.3", @"1.4", @"5.0", @"6", @"7", @"8", @"9", @"10", @"11", @"12", @"13", @"14", @"15", @"16" };

@@ -3,15 +3,10 @@ const ConstantPool = @import("ConstantPool.zig");
 
 const logger = std.log.scoped(.cf_attributes);
 
-// TODO: Rearrange for performance
-
-const AttributeMap = std.ComptimeStringMap([]const u8, .{
-    .{ "Code", "code" },
-});
-
 // TODO: Implement all attribute types
 pub const AttributeInfo = union(enum) {
     code: CodeAttribute,
+    line_number_table: LineNumberTableAttribute,
     unknown: void,
 
     pub fn decode(constant_pool: *ConstantPool, allocator: std.mem.Allocator, reader: anytype) anyerror!AttributeInfo {
@@ -25,14 +20,12 @@ pub const AttributeInfo = union(enum) {
         var fbs = std.io.fixedBufferStream(info);
         var name = constant_pool.get(attribute_name_index).utf8.bytes;
 
-        inline for (std.meta.fields(AttributeInfo)) |d| {
-            if (AttributeMap.get(name) != null)
-                if (std.mem.eql(u8, AttributeMap.get(name).?, d.name)) {
-                    return @unionInit(AttributeInfo, d.name, if (d.field_type == void) {} else z: {
-                        var value = try @field(d.field_type, "decode")(constant_pool, allocator, fbs.reader());
-                        break :z value;
-                    });
-                };
+        inline for (std.meta.fields(AttributeInfo)) |field| {
+            if (field.field_type == void) {} else {
+                if (std.mem.eql(u8, @field(field.field_type, "name"), name)) {
+                    return @unionInit(AttributeInfo, field.name, try @field(field.field_type, "decode")(constant_pool, allocator, fbs.reader()));
+                }
+            }
         }
 
         logger.err("Could not decode attribute: {s}", .{name});
@@ -51,16 +44,14 @@ pub const AttributeInfo = union(enum) {
         unreachable;
     }
 
-    pub fn deinit(self: AttributeInfo) void {
+    pub fn deinit(self: *AttributeInfo) void {
         inline for (std.meta.fields(AttributeInfo)) |field| {
             if (field.field_type == void) continue;
 
-            if (std.mem.eql(u8, @tagName(std.meta.activeTag(self)), field.name)) {
-                return @field(self, field.name).deinit();
+            if (std.mem.eql(u8, @tagName(std.meta.activeTag(self.*)), field.name)) {
+                @field(self, field.name).deinit();
             }
         }
-
-        unreachable;
     }
 
     pub fn encode(self: AttributeInfo, writer: anytype) !void {
@@ -98,11 +89,6 @@ pub const ExceptionTableEntry = packed struct {
         return entry;
     }
 
-    pub fn calcAttrLen(self: ExceptionTableEntry) u32 {
-        _ = self;
-        return 2 * 4;
-    }
-
     pub fn encode(self: ExceptionTableEntry, writer: anytype) !void {
         try writer.writeIntBig(u16, self.start_pc);
         try writer.writeIntBig(u16, self.end_pc);
@@ -114,44 +100,45 @@ pub const ExceptionTableEntry = packed struct {
 pub const CodeAttribute = struct {
     pub const name = "Code";
 
+    allocator: std.mem.Allocator,
     constant_pool: *ConstantPool,
 
     max_stack: u16,
     max_locals: u16,
 
-    code: std.ArrayList(u8),
-    exception_table: std.ArrayList(ExceptionTableEntry),
+    code: std.ArrayListUnmanaged(u8),
+    exception_table: std.ArrayListUnmanaged(ExceptionTableEntry),
 
-    attributes: std.ArrayList(AttributeInfo),
+    attributes: std.ArrayListUnmanaged(AttributeInfo),
 
     pub fn decode(constant_pool: *ConstantPool, allocator: std.mem.Allocator, reader: anytype) !CodeAttribute {
         var max_stack = try reader.readIntBig(u16);
         var max_locals = try reader.readIntBig(u16);
 
         var code_length = try reader.readIntBig(u32);
-        var code = try std.ArrayList(u8).initCapacity(allocator, code_length);
+        var code = try std.ArrayListUnmanaged(u8).initCapacity(allocator, code_length);
         code.items.len = code_length;
         _ = try reader.readAll(code.items);
 
         var exception_table_len = try reader.readIntBig(u16);
-        var exception_table = try std.ArrayList(ExceptionTableEntry).initCapacity(allocator, exception_table_len);
+        var exception_table = try std.ArrayListUnmanaged(ExceptionTableEntry).initCapacity(allocator, exception_table_len);
         exception_table.items.len = exception_table_len;
         for (exception_table.items) |*et| et.* = try ExceptionTableEntry.decode(reader);
 
-        // TODO: Fix this awful, dangerous, slow hack
         var attributes_length = try reader.readIntBig(u16);
         var attributes_index: usize = 0;
-        var attributes = std.ArrayList(AttributeInfo).init(allocator);
+        var attributes = try std.ArrayListUnmanaged(AttributeInfo).initCapacity(allocator, attributes_length);
         while (attributes_index < attributes_length) : (attributes_index += 1) {
             var decoded = try AttributeInfo.decode(constant_pool, allocator, reader);
             if (decoded == .unknown) {
                 attributes_length -= 1;
                 continue;
             }
-            try attributes.append(decoded);
+            try attributes.append(allocator, decoded);
         }
 
         return CodeAttribute{
+            .allocator = allocator,
             .constant_pool = constant_pool,
 
             .max_stack = max_stack,
@@ -167,7 +154,7 @@ pub const CodeAttribute = struct {
     pub fn calcAttrLen(self: CodeAttribute) u32 {
         var len: u32 = 2 * 4 + 4 + @intCast(u32, self.code.items.len);
         for (self.attributes.items) |att| len += att.calcAttrLen();
-        for (self.exception_table.items) |att| len += att.calcAttrLen();
+        len += 8 * @intCast(u32, self.exception_table.items.len);
         return len;
     }
 
@@ -185,8 +172,69 @@ pub const CodeAttribute = struct {
         for (self.attributes.items) |at| try at.encode(writer);
     }
 
-    pub fn deinit(self: CodeAttribute) void {
-        self.code.deinit();
-        self.attributes.deinit();
+    pub fn deinit(self: *CodeAttribute) void {
+        self.code.deinit(self.allocator);
+        self.exception_table.deinit(self.allocator);
+        for (self.attributes.items) |*attr| {
+            attr.deinit();
+        }
+        self.attributes.deinit(self.allocator);
+    }
+};
+
+pub const LineNumberTableEntry = struct {
+    /// The index into the code array at which the code for a new line in the original source file begins
+    start_pc: u16,
+    /// The corresponding line number in the original source file
+    line_number: u16,
+
+    pub fn decode(reader: anytype) !LineNumberTableEntry {
+        var entry: LineNumberTableEntry = undefined;
+        entry.start_pc = try reader.readIntBig(u16);
+        entry.line_number = try reader.readIntBig(u16);
+        return entry;
+    }
+
+    pub fn encode(self: LineNumberTableEntry, writer: anytype) !void {
+        try writer.writeIntBig(u16, self.start_pc);
+        try writer.writeIntBig(u16, self.line_number);
+    }
+};
+
+pub const LineNumberTableAttribute = struct {
+    pub const name = "LineNumberTable";
+
+    allocator: std.mem.Allocator,
+    constant_pool: *ConstantPool,
+
+    line_number_table: std.ArrayListUnmanaged(LineNumberTableEntry),
+
+    pub fn decode(constant_pool: *ConstantPool, allocator: std.mem.Allocator, reader: anytype) !LineNumberTableAttribute {
+        var line_number_table_length = try reader.readIntBig(u16);
+
+        var line_number_table = try std.ArrayListUnmanaged(LineNumberTableEntry).initCapacity(allocator, line_number_table_length);
+        line_number_table.items.len = line_number_table_length;
+        for (line_number_table.items) |*entry| entry.* = try LineNumberTableEntry.decode(reader);
+
+        return LineNumberTableAttribute{
+            .allocator = allocator,
+            .constant_pool = constant_pool,
+
+            .line_number_table = line_number_table,
+        };
+    }
+
+    pub fn calcAttrLen(self: LineNumberTableAttribute) u32 {
+        var len: u32 = 2 + 4 * @intCast(u32, self.line_number_table.items.len);
+        return len;
+    }
+
+    pub fn encode(self: LineNumberTableAttribute, writer: anytype) anyerror!void {
+        _ = self;
+        _ = writer;
+    }
+
+    pub fn deinit(self: *LineNumberTableAttribute) void {
+        self.line_number_table.deinit(self.allocator);
     }
 };
