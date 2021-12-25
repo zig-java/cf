@@ -225,8 +225,16 @@ pub const IincParams = struct {
     @"const": i16,
 
     pub fn encode(self: Self, writer: anytype) !void {
-        try writer.writeByte(self.index);
-        try writer.writeIntBig(i8, self.@"const");
+        _ = self;
+        _ = writer;
+        // try writer.writeIntBig(i16, self.index);
+        // try writer.writeIntBig(i8, self.@"const");
+    }
+
+    pub fn decode(allocator: std.mem.Allocator, reader: anytype) !IincParams {
+        _ = allocator;
+        _ = reader;
+        return std.mem.zeroes(IincParams);
     }
 };
 
@@ -237,7 +245,7 @@ pub const InvokeDynamicParams = struct {
     indexbyte2: u8,
     pad: u16,
 
-    pub fn decode(allocator: *std.mem.Allocator, reader: anytype) !Self {
+    pub fn decode(allocator: std.mem.Allocator, reader: anytype) !Self {
         _ = allocator;
 
         return Self{
@@ -262,7 +270,7 @@ pub const InvokeInterfaceParams = struct {
     count: u8,
     pad: u8,
 
-    pub fn decode(allocator: *std.mem.Allocator, reader: anytype) !Self {
+    pub fn decode(allocator: std.mem.Allocator, reader: anytype) !Self {
         _ = allocator;
 
         return Self{
@@ -293,7 +301,7 @@ pub const LookupSwitchParams = struct {
     default_offset: i32,
     pairs: []LookupPair,
 
-    pub fn decode(allocator: *std.mem.Allocator, reader: anytype) !Self {
+    pub fn decode(allocator: std.mem.Allocator, reader: anytype) !Self {
         var skipped_bytes = std.mem.alignForward(reader.context.pos, 4) - reader.context.pos;
         try reader.skipBytes(skipped_bytes, .{});
 
@@ -330,7 +338,7 @@ pub const TableSwitchParams = struct {
     high: i32,
     jumps: []i32,
 
-    pub fn decode(allocator: *std.mem.Allocator, reader: anytype) !Self {
+    pub fn decode(allocator: std.mem.Allocator, reader: anytype) !Self {
         var skipped_bytes = std.mem.alignForward(reader.context.pos, 4) - reader.context.pos;
         try reader.skipBytes(skipped_bytes, .{});
 
@@ -364,7 +372,7 @@ pub const MultiANewArrayParams = struct {
     index: ConstantPoolRefOperation,
     dimensions: u8,
 
-    pub fn decode(allocator: *std.mem.Allocator, reader: anytype) !Self {
+    pub fn decode(allocator: std.mem.Allocator, reader: anytype) !Self {
         _ = allocator;
         return Self{
             .index = try reader.readIntBig(u16),
@@ -612,7 +620,7 @@ pub const Operation = union(Opcode) {
     }
 
     // TODO: Implement wide iirc
-    const widenable = []Opcode{
+    const widenable = &[_]Opcode{
         .iload,
         .fload,
         .aload,
@@ -625,20 +633,20 @@ pub const Operation = union(Opcode) {
         .dstore,
     };
 
-    pub fn decode(allocator: *std.mem.Allocator, reader: anytype) !Operation {
+    pub fn decode(allocator: std.mem.Allocator, reader: anytype) !Operation {
         var opcode = try reader.readIntBig(u8);
         if (opcode == @enumToInt(Opcode.wide)) {
             var widened_opcode = try reader.readIntBig(u8);
 
             inline for (widenable) |op| {
-                if (op.value == widened_opcode) {
-                    return @unionInit(Operation, op.name, try reader.readIntBig(u16));
+                if (@enumToInt(op) == widened_opcode) {
+                    return @unionInit(Operation, @tagName(op), try reader.readIntBig(u16));
                 }
             }
         } else {
             inline for (widenable) |op| {
-                if (op.value == opcode) {
-                    return @unionInit(Operation, op.name, try reader.readIntBig(u8));
+                if (@enumToInt(op) == opcode) {
+                    return @unionInit(Operation, @tagName(op), try reader.readIntBig(u8));
                 }
             }
 
@@ -656,11 +664,19 @@ pub const Operation = union(Opcode) {
 
     pub fn encode(self: Operation, writer: anytype) !void {
         inline for (widenable) |op| {
-            if (op.value == @enumToInt(self)) {
-                try writer.writeByte(@enumToInt(Opcode.wide));
-                try writer.writeByte(@enumToInt(self));
-                try writer.writeIntBig(@field(self, op.name));
-                return;
+            if (@enumToInt(op) == @enumToInt(self)) {
+                var v = @field(self, @tagName(op));
+
+                if (v > std.math.maxInt(u8)) {
+                    try writer.writeByte(@enumToInt(Opcode.wide));
+                    try writer.writeByte(@enumToInt(self));
+                    try writer.writeIntBig(u16, v);
+                    return;
+                } else {
+                    try writer.writeByte(@enumToInt(self));
+                    try writer.writeIntBig(u8, @intCast(u8, v));
+                    return;
+                }
             }
         }
 
@@ -688,4 +704,35 @@ const std = @import("std");
 pub fn getIndex(inst: anytype) u16 {
     if (!@hasField(@TypeOf(inst), "indexbyte1")) @compileError("This instruction does not have an index!");
     return @intCast(u16, @field(inst, "indexbyte1")) << @intCast(u16, 8) | @intCast(u16, @field(inst, "indexbyte2"));
+}
+
+test "Decode and encode opcodes including wides" {
+    const ClassFile = @import("../ClassFile.zig");
+    const harness = @import("../../test/harness.zig");
+    var reader = harness.wide.fbs().reader();
+
+    var cf = try ClassFile.decode(std.testing.allocator, reader);
+    defer cf.deinit();
+
+    for (cf.methods.items) |method| {
+        if (std.mem.eql(u8, "main", method.getName().bytes)) {
+            for (method.attributes.items) |attr| {
+                if (attr == .code) {
+                    var final = try std.testing.allocator.alloc(u8, attr.code.code.items.len);
+                    defer std.testing.allocator.free(final);
+
+                    var fbs = std.io.fixedBufferStream(attr.code.code.items);
+                    var final_fbs = std.io.fixedBufferStream(final);
+
+                    while (true) {
+                        var op = try Operation.decode(std.testing.allocator, fbs.reader());
+                        try op.encode(final_fbs.writer());
+                        if (op == .@"return") break;
+                    }
+
+                    try std.testing.expectEqualSlices(u8, attr.code.code.items, final);
+                }
+            }
+        }
+    }
 }

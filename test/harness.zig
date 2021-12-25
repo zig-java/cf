@@ -13,3 +13,4 @@ pub const TestFile = struct {
 };
 
 pub const hello = TestFile.init("Hello");
+pub const wide = TestFile.init("Wide");
