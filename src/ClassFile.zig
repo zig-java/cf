@@ -244,4 +244,8 @@ test "Encode ClassFile" {
     defer cf.deinit();
 
     try cf.encode(joe_file.writer());
+
+    var end_result: [harness.hello.data.len]u8 = undefined;
+    try cf.encode(std.io.fixedBufferStream(&end_result).writer());
+    try std.testing.expectEqualSlices(u8, harness.hello.data, &end_result);
 }

@@ -39,7 +39,7 @@ pub const AttributeInfo = union(enum) {
             if (field.field_type == void) continue;
 
             if (std.mem.eql(u8, @tagName(std.meta.activeTag(self)), field.name)) {
-                return @field(self, field.name).calcAttrLen();
+                return @field(self, field.name).calcAttrLen() + 6; // 6 intro bytes!
             }
         }
 
@@ -63,10 +63,10 @@ pub const AttributeInfo = union(enum) {
             if (std.mem.eql(u8, @tagName(std.meta.activeTag(self)), field.name)) {
                 var attr = @field(self, field.name);
 
-                try attr.encode(writer);
-
                 try writer.writeIntBig(u16, try attr.constant_pool.locateUtf8Entry(@field(field.field_type, "name")));
                 try writer.writeIntBig(u32, attr.calcAttrLen());
+
+                try attr.encode(writer);
             }
         }
     }
@@ -154,7 +154,7 @@ pub const CodeAttribute = struct {
     }
 
     pub fn calcAttrLen(self: CodeAttribute) u32 {
-        var len: u32 = 2 * 4 + 4 + @intCast(u32, self.code.items.len);
+        var len: u32 = 2 + 2 + 4 + @intCast(u32, self.code.items.len) + 2 + 2;
         for (self.attributes.items) |att| len += att.calcAttrLen();
         len += 8 * @intCast(u32, self.exception_table.items.len);
         return len;
@@ -232,8 +232,8 @@ pub const LineNumberTableAttribute = struct {
     }
 
     pub fn encode(self: LineNumberTableAttribute, writer: anytype) anyerror!void {
-        _ = self;
-        _ = writer;
+        try writer.writeIntBig(u16, @intCast(u16, self.line_number_table.items.len));
+        for (self.line_number_table.items) |entry| try entry.encode(writer);
     }
 
     pub fn deinit(self: *LineNumberTableAttribute) void {
@@ -301,8 +301,8 @@ pub const ExceptionsAttribute = struct {
     }
 
     pub fn encode(self: ExceptionsAttribute, writer: anytype) anyerror!void {
-        _ = self;
-        _ = writer;
+        try writer.writeIntBig(u16, @intCast(u16, self.exception_index_table.items.len));
+        for (self.exception_index_table.items) |entry| try writer.writeIntBig(u16, entry);
     }
 
     pub fn deinit(self: *ExceptionsAttribute) void {
