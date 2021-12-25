@@ -74,6 +74,13 @@ pub const WrappedOperation = union(enum) {
                             .index = if (field.name.len == "astore".len) @field(op, field.name) else comptime std.fmt.parseInt(u16, field.name["astore_".len..], 10) catch unreachable,
                         },
                     };
+                } else if (comptime field.name.len >= "aload".len and std.mem.eql(u8, field.name[1 .. 1 + "load".len], "load")) {
+                    return .{
+                        .load_local = .{
+                            .kind = BytecodePrimitive.fromShorthand(field.name[0]),
+                            .index = if (field.name.len == "aload".len) @field(op, field.name) else comptime std.fmt.parseInt(u16, field.name["aload_".len..], 10) catch unreachable,
+                        },
+                    };
                 } else if (comptime @enumToInt(opcode) >= 0x85 and @enumToInt(opcode) <= 0x93) {
                     return .{
                         .convert = .{
@@ -101,14 +108,33 @@ pub const LoadLocalOperation = struct {
     index: u16,
 };
 
+test "Wrapped: Load" {
+    var iload_1_op = ops.Operation{ .iload_1 = {} };
+    var iload_1_wrapped = WrappedOperation.wrap(iload_1_op);
+    try std.testing.expectEqual(BytecodePrimitive.int, iload_1_wrapped.load_local.kind);
+    try std.testing.expectEqual(@as(u16, 1), iload_1_wrapped.load_local.index);
+
+    var iload_n_op = ops.Operation{ .iload = 12 };
+    var iload_n_wrapped = WrappedOperation.wrap(iload_n_op);
+    try std.testing.expectEqual(BytecodePrimitive.int, iload_n_wrapped.load_local.kind);
+    try std.testing.expectEqual(@as(u16, 12), iload_n_wrapped.load_local.index);
+}
+
 pub const StoreLocalOperation = struct {
     kind: BytecodePrimitive,
     index: u16,
 };
 
 test "Wrapped: Store" {
-    var istore_op = ops.Operation{ .istore_3 = {} };
-    _ = istore_op;
+    var istore_1_op = ops.Operation{ .istore_1 = {} };
+    var istore_1_wrapped = WrappedOperation.wrap(istore_1_op);
+    try std.testing.expectEqual(BytecodePrimitive.int, istore_1_wrapped.store_local.kind);
+    try std.testing.expectEqual(@as(u16, 1), istore_1_wrapped.store_local.index);
+
+    var istore_n_op = ops.Operation{ .istore = 12 };
+    var istore_n_wrapped = WrappedOperation.wrap(istore_n_op);
+    try std.testing.expectEqual(BytecodePrimitive.int, istore_n_wrapped.store_local.kind);
+    try std.testing.expectEqual(@as(u16, 12), istore_n_wrapped.store_local.index);
 }
 
 pub const ConvertOperation = struct {
@@ -128,7 +154,8 @@ test "Wrapped: Convert" {
     try std.testing.expect(i2l_wrapped == .convert);
     try std.testing.expectEqual(BytecodePrimitive.int, i2l_wrapped.convert.from);
     try std.testing.expectEqual(BytecodePrimitive.long, i2l_wrapped.convert.to);
-
-    // var l2i_wrapped = WrappedOperation{ .convert = .{ .from = .long, .to = .int } };
-    // l2i_wrapped.
 }
+
+pub const ReturnOperation = struct {
+    kind: ?BytecodePrimitive,
+};
