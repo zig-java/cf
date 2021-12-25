@@ -38,7 +38,7 @@ pub const AttributeInfo = union(enum) {
         inline for (std.meta.fields(AttributeInfo)) |field| {
             if (field.field_type == void) continue;
 
-            if (std.mem.eql(u8, @tagName(std.meta.activeTag(self)), field.name)) {
+            if (std.meta.activeTag(self) == @field(std.meta.Tag(AttributeInfo), field.name)) {
                 return @field(self, field.name).calcAttrLen() + 6; // 6 intro bytes!
             }
         }
@@ -50,7 +50,7 @@ pub const AttributeInfo = union(enum) {
         inline for (std.meta.fields(AttributeInfo)) |field| {
             if (field.field_type == void) continue;
 
-            if (std.mem.eql(u8, @tagName(std.meta.activeTag(self.*)), field.name)) {
+            if (std.meta.activeTag(self.*) == @field(std.meta.Tag(AttributeInfo), field.name)) {
                 @field(self, field.name).deinit();
             }
         }
@@ -60,7 +60,7 @@ pub const AttributeInfo = union(enum) {
         inline for (std.meta.fields(AttributeInfo)) |field| {
             if (field.field_type == void) continue;
 
-            if (std.mem.eql(u8, @tagName(std.meta.activeTag(self)), field.name)) {
+            if (std.meta.activeTag(self) == @field(std.meta.Tag(AttributeInfo), field.name)) {
                 var attr = @field(self, field.name);
 
                 try writer.writeIntBig(u16, try attr.constant_pool.locateUtf8Entry(@field(field.field_type, "name")));
