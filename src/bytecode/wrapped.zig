@@ -39,9 +39,13 @@ pub const BytecodePrimitive = enum {
             else => @panic("No shorthand!"),
         };
     }
+
+    pub fn toType(self: BytecodePrimitive) type {
+        return std.meta.TagPayload(BytecodePrimitiveValue, self);
+    }
 };
 
-pub const BytecodePrimitiveValue = union(enum) {
+pub const BytecodePrimitiveValue = union(BytecodePrimitive) {
     byte: i8,
     char: u16,
     short: i16,
@@ -85,6 +89,11 @@ pub const WrappedOperation = union(enum) {
 
         unreachable;
     }
+
+    // TODO: Implement
+    pub fn unwrap(self: WrappedOperation) ops.Operation {
+        return self;
+    }
 };
 
 pub const LoadLocalOperation = struct {
@@ -99,7 +108,7 @@ pub const StoreLocalOperation = struct {
 
 test "Wrapped: Store" {
     var istore_op = ops.Operation{ .istore_3 = {} };
-    std.log.err("{s}", .{WrappedOperation.wrap(istore_op)});
+    _ = istore_op;
 }
 
 pub const ConvertOperation = struct {
@@ -119,4 +128,7 @@ test "Wrapped: Convert" {
     try std.testing.expect(i2l_wrapped == .convert);
     try std.testing.expectEqual(BytecodePrimitive.int, i2l_wrapped.convert.from);
     try std.testing.expectEqual(BytecodePrimitive.long, i2l_wrapped.convert.to);
+
+    // var l2i_wrapped = WrappedOperation{ .convert = .{ .from = .long, .to = .int } };
+    // l2i_wrapped.
 }

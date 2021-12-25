@@ -222,7 +222,7 @@ pub const IincParams = struct {
     const Self = @This();
 
     index: LocalIndexOperation,
-    @"const": i8,
+    @"const": i16,
 
     pub fn encode(self: Self, writer: anytype) !void {
         try writer.writeByte(self.index);
@@ -611,14 +611,43 @@ pub const Operation = union(Opcode) {
         unreachable;
     }
 
+    // TODO: Implement wide iirc
+    const widenable = []Opcode{
+        .iload,
+        .fload,
+        .aload,
+        .lload,
+        .dload,
+        .istore,
+        .fstore,
+        .astore,
+        .lstore,
+        .dstore,
+    };
+
     pub fn decode(allocator: *std.mem.Allocator, reader: anytype) !Operation {
         var opcode = try reader.readIntBig(u8);
+        if (opcode == @enumToInt(Opcode.wide)) {
+            var widened_opcode = try reader.readIntBig(u8);
 
-        inline for (std.meta.fields(Operation)) |op| {
-            if (@enumToInt(std.meta.stringToEnum(Opcode, op.name).?) == opcode) {
-                return @unionInit(Operation, op.name, if (op.field_type == void) {} else if (@typeInfo(op.field_type) == .Struct) z: {
-                    break :z if (@hasDecl(op.field_type, "decode")) try @field(op.field_type, "decode")(allocator, reader) else @compileError("Cannot decode opcode " ++ op.name);
-                } else if (@typeInfo(op.field_type) == .Enum) try reader.readEnum(op.field_type, .Big) else if (@typeInfo(op.field_type) == .Int) try reader.readIntBig(op.field_type) else unreachable);
+            inline for (widenable) |op| {
+                if (op.value == widened_opcode) {
+                    return @unionInit(Operation, op.name, try reader.readIntBig(u16));
+                }
+            }
+        } else {
+            inline for (widenable) |op| {
+                if (op.value == opcode) {
+                    return @unionInit(Operation, op.name, try reader.readIntBig(u8));
+                }
+            }
+
+            inline for (std.meta.fields(Operation)) |op| {
+                if (@enumToInt(std.meta.stringToEnum(Opcode, op.name).?) == opcode) {
+                    return @unionInit(Operation, op.name, if (op.field_type == void) {} else if (@typeInfo(op.field_type) == .Struct) z: {
+                        break :z if (@hasDecl(op.field_type, "decode")) try @field(op.field_type, "decode")(allocator, reader) else @compileError("Cannot decode opcode " ++ op.name);
+                    } else if (@typeInfo(op.field_type) == .Enum) try reader.readEnum(op.field_type, .Big) else if (@typeInfo(op.field_type) == .Int) try reader.readIntBig(op.field_type) else unreachable);
+                }
             }
         }
 
@@ -626,6 +655,15 @@ pub const Operation = union(Opcode) {
     }
 
     pub fn encode(self: Operation, writer: anytype) !void {
+        inline for (widenable) |op| {
+            if (op.value == @enumToInt(self)) {
+                try writer.writeByte(@enumToInt(Opcode.wide));
+                try writer.writeByte(@enumToInt(self));
+                try writer.writeIntBig(@field(self, op.name));
+                return;
+            }
+        }
+
         try writer.writeByte(@enumToInt(self));
 
         inline for (std.meta.fields(Operation)) |op| {
