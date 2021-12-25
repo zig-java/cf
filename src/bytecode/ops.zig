@@ -223,19 +223,6 @@ pub const IincParams = struct {
 
     index: LocalIndexOperation,
     @"const": i16,
-
-    pub fn encode(self: Self, writer: anytype) !void {
-        _ = self;
-        _ = writer;
-        // try writer.writeIntBig(i16, self.index);
-        // try writer.writeIntBig(i8, self.@"const");
-    }
-
-    pub fn decode(allocator: std.mem.Allocator, reader: anytype) !IincParams {
-        _ = allocator;
-        _ = reader;
-        return std.mem.zeroes(IincParams);
-    }
 };
 
 pub const InvokeDynamicParams = struct {
@@ -638,12 +625,20 @@ pub const Operation = union(Opcode) {
         if (opcode == @enumToInt(Opcode.wide)) {
             var widened_opcode = try reader.readIntBig(u8);
 
+            if (widened_opcode == @enumToInt(Opcode.iinc)) {
+                return Operation{ .iinc = .{ .index = try reader.readIntBig(u16), .@"const" = try reader.readIntBig(i16) } };
+            }
+
             inline for (widenable) |op| {
                 if (@enumToInt(op) == widened_opcode) {
                     return @unionInit(Operation, @tagName(op), try reader.readIntBig(u16));
                 }
             }
         } else {
+            if (opcode == @enumToInt(Opcode.iinc)) {
+                return Operation{ .iinc = .{ .index = try reader.readIntBig(u8), .@"const" = try reader.readIntBig(i8) } };
+            }
+
             inline for (widenable) |op| {
                 if (@enumToInt(op) == opcode) {
                     return @unionInit(Operation, @tagName(op), try reader.readIntBig(u8));
@@ -653,7 +648,7 @@ pub const Operation = union(Opcode) {
             inline for (std.meta.fields(Operation)) |op| {
                 if (@enumToInt(std.meta.stringToEnum(Opcode, op.name).?) == opcode) {
                     return @unionInit(Operation, op.name, if (op.field_type == void) {} else if (@typeInfo(op.field_type) == .Struct) z: {
-                        break :z if (@hasDecl(op.field_type, "decode")) try @field(op.field_type, "decode")(allocator, reader) else @compileError("Cannot decode opcode " ++ op.name);
+                        break :z if (@hasDecl(op.field_type, "decode")) try @field(op.field_type, "decode")(allocator, reader) else unreachable;
                     } else if (@typeInfo(op.field_type) == .Enum) try reader.readEnum(op.field_type, .Big) else if (@typeInfo(op.field_type) == .Int) try reader.readIntBig(op.field_type) else unreachable);
                 }
             }
@@ -663,6 +658,22 @@ pub const Operation = union(Opcode) {
     }
 
     pub fn encode(self: Operation, writer: anytype) !void {
+        if (self == .iinc) {
+            var iinc = self.iinc;
+            if (iinc.index > std.math.maxInt(u8) or iinc.@"const" > std.math.maxInt(i8) or iinc.@"const" < std.math.minInt(i8)) {
+                try writer.writeByte(@enumToInt(Opcode.wide));
+                try writer.writeByte(@enumToInt(Opcode.iinc));
+                try writer.writeIntBig(u16, iinc.index);
+                try writer.writeIntBig(i16, iinc.@"const");
+                return;
+            } else {
+                try writer.writeByte(@enumToInt(Opcode.iinc));
+                try writer.writeByte(@intCast(u8, iinc.index));
+                try writer.writeIntBig(i8, @intCast(i8, iinc.@"const"));
+                return;
+            }
+        }
+
         inline for (widenable) |op| {
             if (@enumToInt(op) == @enumToInt(self)) {
                 var v = @field(self, @tagName(op));
@@ -687,7 +698,7 @@ pub const Operation = union(Opcode) {
                 switch (op.field_type) {
                     void => {},
                     else => switch (@typeInfo(op.field_type)) {
-                        .Struct => if (@hasDecl(op.field_type, "encode")) try @field(@field(self, op.name), "encode")(writer) else @compileError("Cannot encode opcode " ++ op.name),
+                        .Struct => if (@hasDecl(op.field_type, "encode")) try @field(@field(self, op.name), "encode")(writer) else unreachable,
                         .Enum => try writer.writeIntBig(@typeInfo(op.field_type).Enum.tag_type, @enumToInt(@field(self, op.name))),
                         .Int => try writer.writeIntBig(op.field_type, @field(self, op.name)),
                         else => unreachable,

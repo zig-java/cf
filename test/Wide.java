@@ -309,5 +309,8 @@ public class Wide {
         int b = 10;
     
         int c = a + b;
+
+        a6815596217000957 += 10;
+        a += 300;
     }
 }
