@@ -62,7 +62,11 @@ pub const WrappedOperation = union(enum) {
     load_constant: LoadConstantOperation,
 
     store_local: StoreLocalOperation,
+
     load_local: LoadLocalOperation,
+
+    numerical: NumericalOperation,
+
     convert: ConvertOperation,
     @"return": ReturnOperation,
 
@@ -278,6 +282,43 @@ test "Wrapped: Load" {
     var iload_n_wrapped = WrappedOperation.wrap(iload_n_op);
     try std.testing.expectEqual(BytecodePrimitive.int, iload_n_wrapped.load_local.kind);
     try std.testing.expectEqual(@as(u16, 12), iload_n_wrapped.load_local.index);
+}
+
+pub const NumericalOperator = enum {
+    add,
+    sub,
+    mul,
+    div,
+    rem,
+    neg,
+};
+
+pub const NumericalOperation = struct {
+    /// Guaranteed to be a numerical type (int, long, float, double)
+    kind: BytecodePrimitive,
+    operator: NumericalOperator,
+
+    fn matches(comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) bool {
+        _ = operation_field;
+        return @enumToInt(opcode) >= 0x60 and @enumToInt(opcode) <= 0x77;
+    }
+
+    fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) NumericalOperation {
+        _ = op;
+        _ = opcode;
+        return .{
+            .kind = BytecodePrimitive.fromShorthand(operation_field.name[0]),
+            .operator = std.enums.nameCast(NumericalOperator, operation_field.name[1..]),
+        };
+    }
+};
+
+test "Wrapped: Numerical" {
+    var add_op = ops.Operation{ .iadd = .{} };
+    var add_wrapped = WrappedOperation.wrap(add_op);
+
+    try std.testing.expectEqual(BytecodePrimitive.int, add_wrapped.numerical.kind);
+    try std.testing.expectEqual(NumericalOperator.add, add_wrapped.numerical.operator);
 }
 
 pub const ConvertOperation = struct {
