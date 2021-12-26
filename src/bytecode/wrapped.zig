@@ -66,6 +66,7 @@ pub const WrappedOperation = union(enum) {
     load_local: LoadLocalOperation,
 
     numerical: NumericalOperation,
+    increment: IncrementOperation,
 
     convert: ConvertOperation,
     @"return": ReturnOperation,
@@ -320,6 +321,25 @@ test "Wrapped: Numerical" {
     try std.testing.expectEqual(BytecodePrimitive.int, add_wrapped.numerical.kind);
     try std.testing.expectEqual(NumericalOperator.add, add_wrapped.numerical.operator);
 }
+
+pub const IncrementOperation = struct {
+    index: u16,
+    by: i16,
+
+    fn matches(comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) bool {
+        _ = operation_field;
+        return opcode == .iinc;
+    }
+
+    fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) IncrementOperation {
+        _ = opcode;
+        _ = operation_field;
+        return .{
+            .index = op.iinc.index,
+            .by = op.iinc.@"const",
+        };
+    }
+};
 
 pub const ConvertOperation = struct {
     from: BytecodePrimitive,
