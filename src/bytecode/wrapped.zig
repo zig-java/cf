@@ -60,6 +60,7 @@ pub const WrappedOperation = union(enum) {
     store_local: StoreLocalOperation,
     load_local: LoadLocalOperation,
     convert: ConvertOperation,
+    @"return": ReturnOperation,
 
     pub fn wrap(op: ops.Operation) WrappedOperation {
         @setEvalBranchQuota(10000);
@@ -181,4 +182,27 @@ test "Wrapped: Convert" {
 
 pub const ReturnOperation = struct {
     kind: ?BytecodePrimitive,
+
+    fn matches(comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) bool {
+        _ = operation_field;
+        return @enumToInt(opcode) >= 0xac and @enumToInt(opcode) <= 0xb1;
+    }
+
+    fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) ReturnOperation {
+        _ = op;
+        _ = opcode;
+        return .{
+            .kind = if (operation_field.name[0] == 'r') null else BytecodePrimitive.fromShorthand(operation_field.name[0]),
+        };
+    }
 };
+
+test "Wrapped: Return" {
+    var return_op = ops.Operation{ .@"return" = {} };
+    var return_wrapped = WrappedOperation.wrap(return_op);
+    try std.testing.expectEqual(@as(?BytecodePrimitive, null), return_wrapped.@"return".kind);
+
+    var areturn_op = ops.Operation{ .areturn = {} };
+    var areturn_wrapped = WrappedOperation.wrap(areturn_op);
+    try std.testing.expectEqual(BytecodePrimitive.reference, areturn_wrapped.@"return".kind.?);
+}
