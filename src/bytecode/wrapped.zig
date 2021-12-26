@@ -53,10 +53,11 @@ pub const BytecodePrimitiveValue = union(BytecodePrimitive) {
     long: i64,
     float: f32,
     double: f64,
-    reference: usize,
+    reference: ?usize,
 };
 
 pub const WrappedOperation = union(enum) {
+    load_from_constant_pool: LoadFromConstantPoolOperation,
     store_local: StoreLocalOperation,
     load_local: LoadLocalOperation,
     convert: ConvertOperation,
@@ -86,6 +87,55 @@ pub const WrappedOperation = union(enum) {
         return self;
     }
 };
+
+pub const ConstantSize = enum {
+    /// Everything else
+    one,
+    /// Floats and doubles
+    two,
+};
+
+pub const LoadFromConstantPoolOperation = struct {
+    size: ConstantSize,
+    index: u16,
+
+    fn matches(comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) bool {
+        _ = operation_field;
+        return opcode == .ldc or opcode == .ldc_w or opcode == .ldc2_w;
+    }
+
+    fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) LoadFromConstantPoolOperation {
+        _ = opcode;
+        _ = operation_field;
+        return .{
+            .size = switch (op) {
+                .ldc, .ldc_w => .one,
+                .ldc2_w => .two,
+                else => unreachable,
+            },
+            .index = switch (op) {
+                .ldc => |b| b,
+                .ldc_w => |b| b,
+                .ldc2_w => |b| b,
+                else => unreachable,
+            },
+        };
+    }
+};
+
+test "Wrapped: Load From Constant Pool" {
+    var ldc_op = ops.Operation{ .ldc = 7 };
+    var ldc_wrapped = WrappedOperation.wrap(ldc_op);
+
+    try std.testing.expectEqual(ConstantSize.one, ldc_wrapped.load_from_constant_pool.size);
+    try std.testing.expectEqual(@as(u16, 7), ldc_wrapped.load_from_constant_pool.index);
+
+    var ldc2_op = ops.Operation{ .ldc2_w = 7 };
+    var ldc2_wrapped = WrappedOperation.wrap(ldc2_op);
+
+    try std.testing.expectEqual(ConstantSize.two, ldc2_wrapped.load_from_constant_pool.size);
+    try std.testing.expectEqual(@as(u16, 7), ldc2_wrapped.load_from_constant_pool.index);
+}
 
 pub const StoreLocalOperation = struct {
     kind: BytecodePrimitive,
