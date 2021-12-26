@@ -57,7 +57,10 @@ pub const BytecodePrimitiveValue = union(BytecodePrimitive) {
 };
 
 pub const WrappedOperation = union(enum) {
-    load_from_constant_pool: LoadFromConstantPoolOperation,
+    nop: NoOperation,
+    push_constant: PushConstantOperation,
+    load_constant: LoadConstantOperation,
+
     store_local: StoreLocalOperation,
     load_local: LoadLocalOperation,
     convert: ConvertOperation,
@@ -88,6 +91,86 @@ pub const WrappedOperation = union(enum) {
     }
 };
 
+pub const NoOperation = struct {
+    fn matches(comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) bool {
+        _ = operation_field;
+        return opcode == .nop;
+    }
+
+    fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) NoOperation {
+        _ = op;
+        _ = opcode;
+        _ = operation_field;
+
+        return .{};
+    }
+};
+
+test "Wrapped: No Operation" {
+    var nop = ops.Operation{ .nop = {} };
+    var nop_wrapped = WrappedOperation.wrap(nop);
+    try std.testing.expect(nop_wrapped == .nop);
+}
+
+pub const PushConstantOperation = union(enum) {
+    null_ref,
+    /// Int as a byte or short, thus an i16 rather than an i32
+    int: i16,
+    long: u1,
+    float: u2,
+    double: u1,
+
+    fn matches(comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) bool {
+        _ = operation_field;
+        return @enumToInt(opcode) >= 0x01 and @enumToInt(opcode) <= 0x11;
+    }
+
+    fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) PushConstantOperation {
+        _ = operation_field;
+
+        return switch (opcode) {
+            .aconst_null => .null_ref,
+
+            .iconst_m1 => .{ .int = -1 },
+            .iconst_0 => .{ .int = 0 },
+            .iconst_1 => .{ .int = 1 },
+            .iconst_2 => .{ .int = 2 },
+            .iconst_3 => .{ .int = 3 },
+            .iconst_4 => .{ .int = 4 },
+            .iconst_5 => .{ .int = 5 },
+
+            .lconst_0 => .{ .long = 0 },
+            .lconst_1 => .{ .long = 1 },
+
+            .fconst_0 => .{ .float = 0 },
+            .fconst_1 => .{ .float = 1 },
+            .fconst_2 => .{ .float = 2 },
+
+            .dconst_0 => .{ .double = 0 },
+            .dconst_1 => .{ .double = 1 },
+
+            .bipush => .{ .int = op.bipush },
+            .sipush => .{ .int = op.sipush },
+
+            else => unreachable,
+        };
+    }
+};
+
+test "Wrapped: Push Constant" {
+    var null_ref_op = ops.Operation{ .aconst_null = {} };
+    var null_ref_wrapped = WrappedOperation.wrap(null_ref_op);
+    try std.testing.expect(null_ref_wrapped.push_constant == .null_ref);
+
+    var m1_op = ops.Operation{ .iconst_m1 = {} };
+    var m1_wrapped = WrappedOperation.wrap(m1_op);
+    try std.testing.expectEqual(@as(i16, -1), m1_wrapped.push_constant.int);
+
+    var bipush_op = ops.Operation{ .bipush = 17 };
+    var bipush_wrapped = WrappedOperation.wrap(bipush_op);
+    try std.testing.expectEqual(@as(i16, 17), bipush_wrapped.push_constant.int);
+}
+
 pub const ConstantSize = enum {
     /// Everything else
     one,
@@ -95,7 +178,7 @@ pub const ConstantSize = enum {
     two,
 };
 
-pub const LoadFromConstantPoolOperation = struct {
+pub const LoadConstantOperation = struct {
     size: ConstantSize,
     index: u16,
 
@@ -104,7 +187,7 @@ pub const LoadFromConstantPoolOperation = struct {
         return opcode == .ldc or opcode == .ldc_w or opcode == .ldc2_w;
     }
 
-    fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) LoadFromConstantPoolOperation {
+    fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) LoadConstantOperation {
         _ = opcode;
         _ = operation_field;
         return .{
@@ -127,14 +210,14 @@ test "Wrapped: Load From Constant Pool" {
     var ldc_op = ops.Operation{ .ldc = 7 };
     var ldc_wrapped = WrappedOperation.wrap(ldc_op);
 
-    try std.testing.expectEqual(ConstantSize.one, ldc_wrapped.load_from_constant_pool.size);
-    try std.testing.expectEqual(@as(u16, 7), ldc_wrapped.load_from_constant_pool.index);
+    try std.testing.expectEqual(ConstantSize.one, ldc_wrapped.load_constant.size);
+    try std.testing.expectEqual(@as(u16, 7), ldc_wrapped.load_constant.index);
 
     var ldc2_op = ops.Operation{ .ldc2_w = 7 };
     var ldc2_wrapped = WrappedOperation.wrap(ldc2_op);
 
-    try std.testing.expectEqual(ConstantSize.two, ldc2_wrapped.load_from_constant_pool.size);
-    try std.testing.expectEqual(@as(u16, 7), ldc2_wrapped.load_from_constant_pool.index);
+    try std.testing.expectEqual(ConstantSize.two, ldc2_wrapped.load_constant.size);
+    try std.testing.expectEqual(@as(u16, 7), ldc2_wrapped.load_constant.index);
 }
 
 pub const StoreLocalOperation = struct {
