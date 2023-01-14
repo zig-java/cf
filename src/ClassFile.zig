@@ -227,7 +227,8 @@ pub fn getJavaSEVersion(self: ClassFile) GetJavaSEVersionError!JavaSEVersion {
 
 test "Decode ClassFile" {
     const harness = @import("../test/harness.zig");
-    var reader = harness.hello.fbs().reader();
+    var fbs = harness.hello.fbs();
+    var reader = fbs.reader();
 
     var cf = try ClassFile.decode(std.testing.allocator, reader);
     defer cf.deinit();
@@ -235,7 +236,8 @@ test "Decode ClassFile" {
 
 test "Encode ClassFile" {
     const harness = @import("../test/harness.zig");
-    var reader = harness.hello.fbs().reader();
+    var fbs = harness.hello.fbs();
+    var reader = fbs.reader();
 
     var joe_file = try std.fs.cwd().createFile("Hello.class", .{});
     defer joe_file.close();
@@ -246,6 +248,7 @@ test "Encode ClassFile" {
     try cf.encode(joe_file.writer());
 
     var end_result: [harness.hello.data.len]u8 = undefined;
-    try cf.encode(std.io.fixedBufferStream(&end_result).writer());
+    var res_fbs = std.io.fixedBufferStream(&end_result);
+    try cf.encode(res_fbs.writer());
     try std.testing.expectEqualSlices(u8, harness.hello.data, &end_result);
 }

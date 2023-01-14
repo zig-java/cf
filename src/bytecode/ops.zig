@@ -720,7 +720,8 @@ pub fn getIndex(inst: anytype) u16 {
 test "Decode and encode opcodes including wides" {
     const ClassFile = @import("../ClassFile.zig");
     const harness = @import("../../test/harness.zig");
-    var reader = harness.wide.fbs().reader();
+    var wide_fbs = harness.wide.fbs();
+    var reader = wide_fbs.reader();
 
     var cf = try ClassFile.decode(std.testing.allocator, reader);
     defer cf.deinit();

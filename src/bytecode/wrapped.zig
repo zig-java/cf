@@ -97,12 +97,12 @@ pub const WrappedOperation = union(enum) {
 };
 
 pub const NoOperation = struct {
-    fn matches(comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) bool {
+    fn matches(comptime opcode: ops.Opcode, comptime operation_field: std.builtin.Type.UnionField) bool {
         _ = operation_field;
         return opcode == .nop;
     }
 
-    fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) NoOperation {
+    fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.Type.UnionField) NoOperation {
         _ = op;
         _ = opcode;
         _ = operation_field;
@@ -125,12 +125,12 @@ pub const PushConstantOperation = union(enum) {
     float: u2,
     double: u1,
 
-    fn matches(comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) bool {
+    fn matches(comptime opcode: ops.Opcode, comptime operation_field: std.builtin.Type.UnionField) bool {
         _ = operation_field;
         return @enumToInt(opcode) >= 0x01 and @enumToInt(opcode) <= 0x11;
     }
 
-    fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) PushConstantOperation {
+    fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.Type.UnionField) PushConstantOperation {
         _ = operation_field;
 
         return switch (opcode) {
@@ -187,12 +187,12 @@ pub const LoadConstantOperation = struct {
     size: ConstantSize,
     index: u16,
 
-    fn matches(comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) bool {
+    fn matches(comptime opcode: ops.Opcode, comptime operation_field: std.builtin.Type.UnionField) bool {
         _ = operation_field;
         return opcode == .ldc or opcode == .ldc_w or opcode == .ldc2_w;
     }
 
-    fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) LoadConstantOperation {
+    fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.Type.UnionField) LoadConstantOperation {
         _ = opcode;
         _ = operation_field;
         return .{
@@ -229,12 +229,12 @@ pub const StoreLocalOperation = struct {
     kind: BytecodePrimitive,
     index: u16,
 
-    fn matches(comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) bool {
+    fn matches(comptime opcode: ops.Opcode, comptime operation_field: std.builtin.Type.UnionField) bool {
         _ = opcode;
         return operation_field.name.len >= "astore".len and std.mem.eql(u8, operation_field.name[1 .. 1 + "store".len], "store");
     }
 
-    fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) StoreLocalOperation {
+    fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.Type.UnionField) StoreLocalOperation {
         _ = opcode;
         return .{
             .kind = BytecodePrimitive.fromShorthand(operation_field.name[0]),
@@ -259,12 +259,12 @@ pub const LoadLocalOperation = struct {
     kind: BytecodePrimitive,
     index: u16,
 
-    fn matches(comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) bool {
+    fn matches(comptime opcode: ops.Opcode, comptime operation_field: std.builtin.Type.UnionField) bool {
         _ = opcode;
         return operation_field.name.len >= "aload".len and std.mem.eql(u8, operation_field.name[1 .. 1 + "load".len], "load");
     }
 
-    fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) LoadLocalOperation {
+    fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.Type.UnionField) LoadLocalOperation {
         _ = opcode;
         return .{
             .kind = BytecodePrimitive.fromShorthand(operation_field.name[0]),
@@ -299,12 +299,12 @@ pub const NumericalOperation = struct {
     kind: BytecodePrimitive,
     operator: NumericalOperator,
 
-    fn matches(comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) bool {
+    fn matches(comptime opcode: ops.Opcode, comptime operation_field: std.builtin.Type.UnionField) bool {
         _ = operation_field;
         return @enumToInt(opcode) >= 0x60 and @enumToInt(opcode) <= 0x77;
     }
 
-    fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) NumericalOperation {
+    fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.Type.UnionField) NumericalOperation {
         _ = op;
         _ = opcode;
         return .{
@@ -315,7 +315,7 @@ pub const NumericalOperation = struct {
 };
 
 test "Wrapped: Numerical" {
-    var add_op = ops.Operation{ .iadd = .{} };
+    var add_op = ops.Operation{ .iadd = {} };
     var add_wrapped = WrappedOperation.wrap(add_op);
 
     try std.testing.expectEqual(BytecodePrimitive.int, add_wrapped.numerical.kind);
@@ -326,12 +326,12 @@ pub const IncrementOperation = struct {
     index: u16,
     by: i16,
 
-    fn matches(comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) bool {
+    fn matches(comptime opcode: ops.Opcode, comptime operation_field: std.builtin.Type.UnionField) bool {
         _ = operation_field;
         return opcode == .iinc;
     }
 
-    fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) IncrementOperation {
+    fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.Type.UnionField) IncrementOperation {
         _ = opcode;
         _ = operation_field;
         return .{
@@ -345,12 +345,12 @@ pub const ConvertOperation = struct {
     from: BytecodePrimitive,
     to: BytecodePrimitive,
 
-    fn matches(comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) bool {
+    fn matches(comptime opcode: ops.Opcode, comptime operation_field: std.builtin.Type.UnionField) bool {
         _ = operation_field;
         return @enumToInt(opcode) >= 0x85 and @enumToInt(opcode) <= 0x93;
     }
 
-    fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) ConvertOperation {
+    fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.Type.UnionField) ConvertOperation {
         _ = op;
         _ = opcode;
         return .{
@@ -377,12 +377,12 @@ test "Wrapped: Convert" {
 pub const ReturnOperation = struct {
     kind: ?BytecodePrimitive,
 
-    fn matches(comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) bool {
+    fn matches(comptime opcode: ops.Opcode, comptime operation_field: std.builtin.Type.UnionField) bool {
         _ = operation_field;
         return @enumToInt(opcode) >= 0xac and @enumToInt(opcode) <= 0xb1;
     }
 
-    fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.TypeInfo.UnionField) ReturnOperation {
+    fn wrap(op: ops.Operation, comptime opcode: ops.Opcode, comptime operation_field: std.builtin.Type.UnionField) ReturnOperation {
         _ = op;
         _ = opcode;
         return .{
