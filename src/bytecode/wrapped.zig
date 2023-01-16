@@ -78,8 +78,8 @@ pub const WrappedOperation = union(enum) {
             comptime var opcode = @field(ops.Opcode, operation_field.name);
             if (std.meta.activeTag(op) == opcode) {
                 inline for (std.meta.fields(WrappedOperation)) |wo_field| {
-                    if (comptime wo_field.field_type.matches(opcode, operation_field)) {
-                        return @unionInit(WrappedOperation, wo_field.name, wo_field.field_type.wrap(op, opcode, operation_field));
+                    if (comptime wo_field.type.matches(opcode, operation_field)) {
+                        return @unionInit(WrappedOperation, wo_field.name, wo_field.type.wrap(op, opcode, operation_field));
                     }
                 }
 

@@ -23,9 +23,9 @@ pub const AttributeInfo = union(enum) {
         var name = constant_pool.get(attribute_name_index).utf8.bytes;
 
         inline for (std.meta.fields(AttributeInfo)) |field| {
-            if (field.field_type == void) {} else {
-                if (std.mem.eql(u8, @field(field.field_type, "name"), name)) {
-                    return @unionInit(AttributeInfo, field.name, try @field(field.field_type, "decode")(constant_pool, allocator, fbs.reader()));
+            if (field.type == void) {} else {
+                if (std.mem.eql(u8, @field(field.type, "name"), name)) {
+                    return @unionInit(AttributeInfo, field.name, try @field(field.type, "decode")(constant_pool, allocator, fbs.reader()));
                 }
             }
         }
@@ -36,7 +36,7 @@ pub const AttributeInfo = union(enum) {
 
     pub fn calcAttrLen(self: AttributeInfo) u32 {
         inline for (std.meta.fields(AttributeInfo)) |field| {
-            if (field.field_type == void) continue;
+            if (field.type == void) continue;
 
             if (std.meta.activeTag(self) == @field(std.meta.Tag(AttributeInfo), field.name)) {
                 return @field(self, field.name).calcAttrLen() + 6; // 6 intro bytes!
@@ -48,7 +48,7 @@ pub const AttributeInfo = union(enum) {
 
     pub fn deinit(self: *AttributeInfo) void {
         inline for (std.meta.fields(AttributeInfo)) |field| {
-            if (field.field_type == void) continue;
+            if (field.type == void) continue;
 
             if (std.meta.activeTag(self.*) == @field(std.meta.Tag(AttributeInfo), field.name)) {
                 @field(self, field.name).deinit();
@@ -58,12 +58,12 @@ pub const AttributeInfo = union(enum) {
 
     pub fn encode(self: AttributeInfo, writer: anytype) !void {
         inline for (std.meta.fields(AttributeInfo)) |field| {
-            if (field.field_type == void) continue;
+            if (field.type == void) continue;
 
             if (std.meta.activeTag(self) == @field(std.meta.Tag(AttributeInfo), field.name)) {
                 var attr = @field(self, field.name);
 
-                try writer.writeIntBig(u16, try attr.constant_pool.locateUtf8Entry(@field(field.field_type, "name")));
+                try writer.writeIntBig(u16, try attr.constant_pool.locateUtf8Entry(@field(field.type, "name")));
                 try writer.writeIntBig(u32, attr.calcAttrLen());
 
                 try attr.encode(writer);

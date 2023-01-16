@@ -599,7 +599,7 @@ pub const Operation = union(Opcode) {
     pub fn sizeOf(self: Operation) usize {
         inline for (std.meta.fields(Operation)) |op| {
             if (@enumToInt(std.meta.stringToEnum(Opcode, op.name).?) == @enumToInt(self)) {
-                return 1 + if (op.field_type == void) 0 else @sizeOf(op.field_type);
+                return 1 + if (op.type == void) 0 else @sizeOf(op.type);
             }
         }
 
@@ -647,9 +647,9 @@ pub const Operation = union(Opcode) {
 
             inline for (std.meta.fields(Operation)) |op| {
                 if (@enumToInt(std.meta.stringToEnum(Opcode, op.name).?) == opcode) {
-                    return @unionInit(Operation, op.name, if (op.field_type == void) {} else if (@typeInfo(op.field_type) == .Struct) z: {
-                        break :z if (@hasDecl(op.field_type, "decode")) try @field(op.field_type, "decode")(allocator, reader) else unreachable;
-                    } else if (@typeInfo(op.field_type) == .Enum) try reader.readEnum(op.field_type, .Big) else if (@typeInfo(op.field_type) == .Int) try reader.readIntBig(op.field_type) else unreachable);
+                    return @unionInit(Operation, op.name, if (op.type == void) {} else if (@typeInfo(op.type) == .Struct) z: {
+                        break :z if (@hasDecl(op.type, "decode")) try @field(op.type, "decode")(allocator, reader) else unreachable;
+                    } else if (@typeInfo(op.type) == .Enum) try reader.readEnum(op.type, .Big) else if (@typeInfo(op.type) == .Int) try reader.readIntBig(op.type) else unreachable);
                 }
             }
         }
@@ -695,12 +695,12 @@ pub const Operation = union(Opcode) {
 
         inline for (std.meta.fields(Operation)) |op| {
             if (@enumToInt(std.meta.stringToEnum(Opcode, op.name).?) == @enumToInt(self)) {
-                switch (op.field_type) {
+                switch (op.type) {
                     void => {},
-                    else => switch (@typeInfo(op.field_type)) {
-                        .Struct => if (@hasDecl(op.field_type, "encode")) try @field(@field(self, op.name), "encode")(writer) else unreachable,
-                        .Enum => try writer.writeIntBig(@typeInfo(op.field_type).Enum.tag_type, @enumToInt(@field(self, op.name))),
-                        .Int => try writer.writeIntBig(op.field_type, @field(self, op.name)),
+                    else => switch (@typeInfo(op.type)) {
+                        .Struct => if (@hasDecl(op.type, "encode")) try @field(@field(self, op.name), "encode")(writer) else unreachable,
+                        .Enum => try writer.writeIntBig(@typeInfo(op.type).Enum.tag_type, @enumToInt(@field(self, op.name))),
+                        .Int => try writer.writeIntBig(op.type, @field(self, op.name)),
                         else => unreachable,
                     },
                 }
