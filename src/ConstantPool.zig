@@ -17,7 +17,7 @@ pub fn init(allocator: std.mem.Allocator, entry_count: u16) !*ConstantPool {
     return c;
 }
 
-pub fn get(self: ConstantPool, index: u16) Entry {
+pub fn get(self: *const ConstantPool, index: u16) Entry {
     return self.entries.items[index - 1];
 }
 
