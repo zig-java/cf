@@ -7,6 +7,7 @@ const logger = std.log.scoped(.cf_attributes);
 pub const AttributeInfo = union(enum) {
     constant_value: ConstantValueAttribute,
     runtime_visible_annotations: RuntimeVisibleAnnotationsAttribute,
+    deprecated: DeprecatedAttribute,
     code: CodeAttribute,
     line_number_table: LineNumberTableAttribute,
     source_file: SourceFileAttribute,
@@ -342,6 +343,36 @@ pub const ConstantValueAttribute = struct {
         _ = self;
     }
 };
+
+pub const DeprecatedAttribute = struct {
+    pub const name = "Deprecated";
+
+    allocator: std.mem.Allocator,
+    constant_pool: *ConstantPool,
+
+    pub fn decode(constant_pool: *ConstantPool, allocator: std.mem.Allocator, reader: anytype) !DeprecatedAttribute {
+        _ = reader;
+        return DeprecatedAttribute{
+            .allocator = allocator,
+            .constant_pool = constant_pool,
+        };
+    }
+
+    pub fn calcAttrLen(self: DeprecatedAttribute) u32 {
+        _ = self;
+        return 2;
+    }
+
+    pub fn encode(self: DeprecatedAttribute, writer: anytype) anyerror!void {
+        _ = self;
+        _ = writer;
+    }
+
+    pub fn deinit(self: *DeprecatedAttribute) void {
+        _ = self;
+    }
+};
+
 // Annotations
 pub const ElementTag = enum(u8) {
     // Primitive types
