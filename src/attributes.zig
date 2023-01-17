@@ -5,6 +5,7 @@ const logger = std.log.scoped(.cf_attributes);
 
 // TODO: Implement all attribute types
 pub const AttributeInfo = union(enum) {
+    constant_value: ConstantValueAttribute,
     code: CodeAttribute,
     line_number_table: LineNumberTableAttribute,
     source_file: SourceFileAttribute,
@@ -307,5 +308,36 @@ pub const ExceptionsAttribute = struct {
 
     pub fn deinit(self: *ExceptionsAttribute) void {
         self.exception_index_table.deinit(self.allocator);
+    }
+};
+
+pub const ConstantValueAttribute = struct {
+    pub const name = "ConstantValue";
+
+    allocator: std.mem.Allocator,
+    constant_pool: *ConstantPool,
+
+    constantvalue_index: u16,
+
+    pub fn decode(constant_pool: *ConstantPool, allocator: std.mem.Allocator, reader: anytype) !ConstantValueAttribute {
+        return ConstantValueAttribute{
+            .allocator = allocator,
+            .constant_pool = constant_pool,
+
+            .constantvalue_index = try reader.readIntBig(u16),
+        };
+    }
+
+    pub fn calcAttrLen(self: ConstantValueAttribute) u32 {
+        _ = self;
+        return 2;
+    }
+
+    pub fn encode(self: ConstantValueAttribute, writer: anytype) anyerror!void {
+        try writer.writeIntBig(u16, self.constantvalue_index);
+    }
+
+    pub fn deinit(self: *ConstantValueAttribute) void {
+        _ = self;
     }
 };
