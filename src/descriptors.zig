@@ -40,7 +40,7 @@ pub const Descriptor = union(enum) {
     method: MethodDescriptor,
 
     /// Only valid for method `return_type`s
-    @"void": void,
+    void: void,
 
     pub fn stringify(self: Self, writer: anytype) anyerror!void {
         switch (self) {
@@ -164,7 +164,7 @@ fn parse_(allocator: std.mem.Allocator, reader: anytype) anyerror!?*Descriptor {
             var returnd = (try parse_(allocator, reader)).?;
 
             var x = try allocator.create(Descriptor);
-            x.* = .{ .method = .{ .parameters = params.toOwnedSlice(), .return_type = returnd } };
+            x.* = .{ .method = .{ .parameters = try params.toOwnedSlice(), .return_type = returnd } };
             return x;
         },
         ')' => return null,
@@ -214,7 +214,7 @@ test "Descriptors: Write/parse method that returns an object and accepts an inte
 
     var object = Descriptor{ .object = "java/lang/Object" };
 
-    var desc = Descriptor{ .method = .{ .parameters = &.{ &int, &double, &thread }, .return_type = &object } };
+    var desc = Descriptor{ .method = .{ .parameters = &[_]*Descriptor{ &int, &double, &thread }, .return_type = &object } };
 
     var out_buf = std.ArrayList(u8).init(std.testing.allocator);
     defer out_buf.deinit();

@@ -17,7 +17,7 @@ pub fn init(allocator: std.mem.Allocator, entry_count: u16) !*ConstantPool {
     return c;
 }
 
-pub fn get(self: ConstantPool, index: u16) Entry {
+pub fn get(self: *const ConstantPool, index: u16) Entry {
     return self.entries.items[index - 1];
 }
 
@@ -40,10 +40,10 @@ pub fn Serialize(comptime T: type) type {
             value.constant_pool = constant_pool;
 
             inline for (std.meta.fields(T)[1..]) |field| {
-                @field(value, field.name) = switch (@typeInfo(field.field_type)) {
-                    .Int => try reader.readIntBig(field.field_type),
-                    .Enum => |info| @intToEnum(field.field_type, try reader.readIntBig(info.tag_type)),
-                    else => @compileError("Decode not implemented: " ++ @typeName(field.field_type)),
+                @field(value, field.name) = switch (@typeInfo(field.type)) {
+                    .Int => try reader.readIntBig(field.type),
+                    .Enum => |info| @intToEnum(field.type, try reader.readIntBig(info.tag_type)),
+                    else => @compileError("Decode not implemented: " ++ @typeName(field.type)),
                 };
             }
 
@@ -90,7 +90,7 @@ pub fn decodeEntry(self: ConstantPool, reader: anytype) !Entry {
     inline for (@typeInfo(Tag).Enum.fields) |f, i| {
         const this_tag_value = @field(Tag, f.name);
         if (tag == @enumToInt(this_tag_value)) {
-            const T = std.meta.fields(Entry)[i].field_type;
+            const T = std.meta.fields(Entry)[i].type;
             var value = if (@hasDecl(T, "decode")) try @field(T, "decode")(&self, reader) else try Serialize(T).decode(&self, reader);
             return @unionInit(Entry, f.name, value);
         }
@@ -363,17 +363,17 @@ pub const Entry = union(Tag) {
             if (@enumToInt(self) == @enumToInt(this_tag_value)) {
                 try writer.writeByte(@enumToInt(self));
 
-                const T = std.meta.fields(Entry)[i].field_type;
+                const T = std.meta.fields(Entry)[i].type;
                 var value = @field(self, f.name);
 
                 if (@hasDecl(T, "encode"))
                     return try @field(value, "encode")(writer);
 
                 inline for (std.meta.fields(T)[1..]) |field| {
-                    switch (@typeInfo(field.field_type)) {
-                        .Int => try writer.writeIntBig(field.field_type, @field(value, field.name)),
+                    switch (@typeInfo(field.type)) {
+                        .Int => try writer.writeIntBig(field.type, @field(value, field.name)),
                         .Enum => |info| try writer.writeIntBig(info.tag_type, @enumToInt(@field(value, field.name))),
-                        else => @compileError("Encode not implemented: " ++ @typeName(field.field_type)),
+                        else => @compileError("Encode not implemented: " ++ @typeName(field.type)),
                     }
                 }
             }

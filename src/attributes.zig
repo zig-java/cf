@@ -5,6 +5,9 @@ const logger = std.log.scoped(.cf_attributes);
 
 // TODO: Implement all attribute types
 pub const AttributeInfo = union(enum) {
+    constant_value: ConstantValueAttribute,
+    runtime_visible_annotations: RuntimeVisibleAnnotationsAttribute,
+    deprecated: DeprecatedAttribute,
     code: CodeAttribute,
     line_number_table: LineNumberTableAttribute,
     source_file: SourceFileAttribute,
@@ -23,9 +26,9 @@ pub const AttributeInfo = union(enum) {
         var name = constant_pool.get(attribute_name_index).utf8.bytes;
 
         inline for (std.meta.fields(AttributeInfo)) |field| {
-            if (field.field_type == void) {} else {
-                if (std.mem.eql(u8, @field(field.field_type, "name"), name)) {
-                    return @unionInit(AttributeInfo, field.name, try @field(field.field_type, "decode")(constant_pool, allocator, fbs.reader()));
+            if (field.type == void) {} else {
+                if (std.mem.eql(u8, @field(field.type, "name"), name)) {
+                    return @unionInit(AttributeInfo, field.name, try @field(field.type, "decode")(constant_pool, allocator, fbs.reader()));
                 }
             }
         }
@@ -36,7 +39,7 @@ pub const AttributeInfo = union(enum) {
 
     pub fn calcAttrLen(self: AttributeInfo) u32 {
         inline for (std.meta.fields(AttributeInfo)) |field| {
-            if (field.field_type == void) continue;
+            if (field.type == void) continue;
 
             if (std.meta.activeTag(self) == @field(std.meta.Tag(AttributeInfo), field.name)) {
                 return @field(self, field.name).calcAttrLen() + 6; // 6 intro bytes!
@@ -48,7 +51,7 @@ pub const AttributeInfo = union(enum) {
 
     pub fn deinit(self: *AttributeInfo) void {
         inline for (std.meta.fields(AttributeInfo)) |field| {
-            if (field.field_type == void) continue;
+            if (field.type == void) continue;
 
             if (std.meta.activeTag(self.*) == @field(std.meta.Tag(AttributeInfo), field.name)) {
                 @field(self, field.name).deinit();
@@ -58,12 +61,12 @@ pub const AttributeInfo = union(enum) {
 
     pub fn encode(self: AttributeInfo, writer: anytype) !void {
         inline for (std.meta.fields(AttributeInfo)) |field| {
-            if (field.field_type == void) continue;
+            if (field.type == void) continue;
 
             if (std.meta.activeTag(self) == @field(std.meta.Tag(AttributeInfo), field.name)) {
                 var attr = @field(self, field.name);
 
-                try writer.writeIntBig(u16, try attr.constant_pool.locateUtf8Entry(@field(field.field_type, "name")));
+                try writer.writeIntBig(u16, try attr.constant_pool.locateUtf8Entry(@field(field.type, "name")));
                 try writer.writeIntBig(u32, attr.calcAttrLen());
 
                 try attr.encode(writer);
@@ -307,5 +310,229 @@ pub const ExceptionsAttribute = struct {
 
     pub fn deinit(self: *ExceptionsAttribute) void {
         self.exception_index_table.deinit(self.allocator);
+    }
+};
+
+pub const ConstantValueAttribute = struct {
+    pub const name = "ConstantValue";
+
+    allocator: std.mem.Allocator,
+    constant_pool: *ConstantPool,
+
+    constantvalue_index: u16,
+
+    pub fn decode(constant_pool: *ConstantPool, allocator: std.mem.Allocator, reader: anytype) !ConstantValueAttribute {
+        return ConstantValueAttribute{
+            .allocator = allocator,
+            .constant_pool = constant_pool,
+
+            .constantvalue_index = try reader.readIntBig(u16),
+        };
+    }
+
+    pub fn calcAttrLen(self: ConstantValueAttribute) u32 {
+        _ = self;
+        return 2;
+    }
+
+    pub fn encode(self: ConstantValueAttribute, writer: anytype) anyerror!void {
+        try writer.writeIntBig(u16, self.constantvalue_index);
+    }
+
+    pub fn deinit(self: *ConstantValueAttribute) void {
+        _ = self;
+    }
+};
+
+pub const DeprecatedAttribute = struct {
+    pub const name = "Deprecated";
+
+    allocator: std.mem.Allocator,
+    constant_pool: *ConstantPool,
+
+    pub fn decode(constant_pool: *ConstantPool, allocator: std.mem.Allocator, reader: anytype) !DeprecatedAttribute {
+        _ = reader;
+        return DeprecatedAttribute{
+            .allocator = allocator,
+            .constant_pool = constant_pool,
+        };
+    }
+
+    pub fn calcAttrLen(self: DeprecatedAttribute) u32 {
+        _ = self;
+        return 2;
+    }
+
+    pub fn encode(self: DeprecatedAttribute, writer: anytype) anyerror!void {
+        _ = self;
+        _ = writer;
+    }
+
+    pub fn deinit(self: *DeprecatedAttribute) void {
+        _ = self;
+    }
+};
+
+// Annotations
+pub const ElementTag = enum(u8) {
+    // Primitive types
+    Byte = 'B',
+    Char = 'C',
+    Double = 'D',
+    Float = 'F',
+    Int = 'I',
+    Long = 'J',
+    Short = 'S',
+    Boolean = 'Z',
+
+    // Other legal values
+    String = 's',
+    EnumConstant = 'e',
+    Class = 'c',
+    AnnotationType = '@',
+    Array = '[',
+};
+
+pub const ElementValue = union(ElementTag) {
+    Byte: u16,
+    Char: u16,
+    Double: u16,
+    Float: u16,
+    Int: u16,
+    Long: u16,
+    Short: u16,
+    Boolean: u16,
+    String: u16,
+    EnumConstant: struct {
+        type_name_index: u16,
+        const_name_index: u16,
+    },
+    Class: u16,
+    AnnotationType: *Annotation,
+    Array: struct {
+        num_values: u16,
+        values: []ElementValue,
+    },
+
+    pub fn decode(allocator: std.mem.Allocator, reader: anytype) anyerror!ElementValue {
+        const value_tag = try reader.readEnum(ElementTag, .Big);
+        const value: ElementValue = switch (value_tag) {
+            .Byte => .{ .Byte = try reader.readIntBig(u16) },
+            .Char => .{ .Char = try reader.readIntBig(u16) },
+            .Double => .{ .Double = try reader.readIntBig(u16) },
+            .Float => .{ .Float = try reader.readIntBig(u16) },
+            .Int => .{ .Int = try reader.readIntBig(u16) },
+            .Long => .{ .Long = try reader.readIntBig(u16) },
+            .Short => .{ .Short = try reader.readIntBig(u16) },
+            .Boolean => .{ .Boolean = try reader.readIntBig(u16) },
+            .String => .{ .String = try reader.readIntBig(u16) },
+            .EnumConstant => .{ .EnumConstant = .{
+                .type_name_index = try reader.readIntBig(u16),
+                .const_name_index = try reader.readIntBig(u16),
+            } },
+            .Class => .{ .Class = try reader.readIntBig(u16) },
+            .AnnotationType => annotation: {
+                const annotation = try allocator.create(Annotation);
+                annotation.* = try Annotation.decode(allocator, reader);
+                break :annotation .{ .AnnotationType = annotation };
+            },
+            .Array => array: {
+                const num_values = try reader.readIntBig(u16);
+                const values = try allocator.alloc(ElementValue, num_values);
+                for (values) |*value| {
+                    value.* = try ElementValue.decode(allocator, reader);
+                }
+                break :array .{ .Array = .{
+                    .num_values = num_values,
+                    .values = values,
+                } };
+            },
+        };
+        return value;
+    }
+};
+
+pub const AnnotationValuePair = struct {
+    element_name_index: u16,
+    value: ElementValue,
+    pub fn decode(allocator: std.mem.Allocator, reader: anytype) !AnnotationValuePair {
+        const element_name_index = try reader.readIntBig(u16);
+        return AnnotationValuePair{
+            .element_name_index = element_name_index,
+            .value = try ElementValue.decode(allocator, reader),
+        };
+    }
+
+    pub fn encode(self: AnnotationValuePair, writer: anytype) !void {
+        // TODO
+        _ = writer;
+        _ = self;
+    }
+};
+
+pub const Annotation = struct {
+    type_index: u16,
+    num_element_value_pairs: u16,
+    element_value_pairs: []AnnotationValuePair,
+    pub fn decode(allocator: std.mem.Allocator, reader: anytype) !Annotation {
+        const type_index = try reader.readIntBig(u16);
+        const num_element_value_pairs = try reader.readIntBig(u16);
+        const element_value_pairs = try allocator.alloc(AnnotationValuePair, num_element_value_pairs);
+        for (element_value_pairs) |*value_pair| {
+            value_pair.* = try AnnotationValuePair.decode(allocator, reader);
+        }
+
+        return Annotation{
+            .type_index = type_index,
+            .num_element_value_pairs = num_element_value_pairs,
+            .element_value_pairs = element_value_pairs,
+        };
+    }
+
+    pub fn encode(self: Annotation, writer: anytype) !void {
+        // TODO
+        _ = writer;
+        _ = self;
+    }
+};
+
+pub const RuntimeVisibleAnnotationsAttribute = struct {
+    pub const name = "RuntimeVisibleAnnotations";
+
+    allocator: std.mem.Allocator,
+    constant_pool: *ConstantPool,
+
+    num_annotations: u16,
+    annotations: []Annotation,
+
+    pub fn decode(constant_pool: *ConstantPool, allocator: std.mem.Allocator, reader: anytype) !RuntimeVisibleAnnotationsAttribute {
+        const num_annotations = try reader.readIntBig(u16);
+        const annotations = try allocator.alloc(Annotation, num_annotations);
+        for (annotations) |*annotation| {
+            annotation.* = try Annotation.decode(allocator, reader);
+        }
+
+        return RuntimeVisibleAnnotationsAttribute{
+            .allocator = allocator,
+            .constant_pool = constant_pool,
+            .num_annotations = num_annotations,
+            .annotations = annotations,
+        };
+    }
+
+    pub fn calcAttrLen(self: RuntimeVisibleAnnotationsAttribute) u32 {
+        // TODO
+        _ = self;
+        return 2;
+    }
+
+    pub fn encode(self: RuntimeVisibleAnnotationsAttribute, writer: anytype) anyerror!void {
+        // TODO
+        try writer.writeIntBig(u16, self.constantvalue_index);
+    }
+
+    pub fn deinit(self: *RuntimeVisibleAnnotationsAttribute) void {
+        // TODO
+        _ = self;
     }
 };
