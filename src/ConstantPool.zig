@@ -18,6 +18,7 @@ pub fn init(allocator: std.mem.Allocator, entry_count: u16) !*ConstantPool {
 }
 
 pub fn get(self: *const ConstantPool, index: u16) Entry {
+    // std.log.info("{any}", .{self.entries});
     return self.entries.items[index - 1];
 }
 
@@ -85,13 +86,13 @@ pub fn decodeEntries(self: *ConstantPool, reader: anytype) !void {
     }
 }
 
-pub fn decodeEntry(self: ConstantPool, reader: anytype) !Entry {
+pub fn decodeEntry(self: *ConstantPool, reader: anytype) !Entry {
     var tag = try reader.readIntBig(u8);
     inline for (@typeInfo(Tag).Enum.fields) |f, i| {
         const this_tag_value = @field(Tag, f.name);
         if (tag == @enumToInt(this_tag_value)) {
             const T = std.meta.fields(Entry)[i].type;
-            var value = if (@hasDecl(T, "decode")) try @field(T, "decode")(&self, reader) else try Serialize(T).decode(&self, reader);
+            var value = if (@hasDecl(T, "decode")) try @field(T, "decode")(self, reader) else try Serialize(T).decode(self, reader);
             return @unionInit(Entry, f.name, value);
         }
     }
@@ -165,19 +166,19 @@ pub const IntegerInfo = struct {
 pub const FloatInfo = struct {
     constant_pool: *const ConstantPool,
 
-    value: u32,
+    bytes: u32,
 };
 
 pub const LongInfo = struct {
     constant_pool: *const ConstantPool,
 
-    value: u64,
+    bytes: u64,
 };
 
 pub const DoubleInfo = struct {
     constant_pool: *const ConstantPool,
 
-    value: u64,
+    bytes: u64,
 };
 
 pub const NameAndTypeInfo = struct {

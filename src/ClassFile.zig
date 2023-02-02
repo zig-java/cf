@@ -59,10 +59,6 @@ methods: std.ArrayList(MethodInfo),
 /// Attributes the class has
 attributes: std.ArrayList(attributes.AttributeInfo),
 
-pub fn getConstantPoolEntry(self: ClassFile, index: u16) ConstantPool.Entry {
-    return self.constant_pool[index - 1];
-}
-
 pub fn decode(allocator: std.mem.Allocator, reader: anytype) !ClassFile {
     var magic = try reader.readIntBig(u32);
     if (magic != 0xCAFEBABE) return error.BadMagicValue;

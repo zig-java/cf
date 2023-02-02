@@ -705,12 +705,6 @@ pub const Operation = union(Opcode) {
 
 const std = @import("std");
 
-/// Get the index specified by an operation, if possible
-pub fn getIndex(inst: anytype) u16 {
-    if (!@hasField(@TypeOf(inst), "indexbyte1")) @compileError("This instruction does not have an index!");
-    return @intCast(u16, @field(inst, "indexbyte1")) << @intCast(u16, 8) | @intCast(u16, @field(inst, "indexbyte2"));
-}
-
 test "Decode and encode opcodes including wides" {
     const ClassFile = @import("../ClassFile.zig");
     const harness = @import("../../test/harness.zig");
