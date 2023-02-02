@@ -228,23 +228,20 @@ pub const IincParams = struct {
 pub const InvokeDynamicParams = struct {
     const Self = @This();
 
-    indexbyte1: u8,
-    indexbyte2: u8,
+    index: u16,
     pad: u16,
 
     pub fn decode(allocator: std.mem.Allocator, reader: anytype) !Self {
         _ = allocator;
 
         return Self{
-            .indexbyte1 = try reader.readByte(),
-            .indexbyte2 = try reader.readByte(),
+            .index = try reader.readIntBig(u16),
             .pad = try reader.readIntBig(u16),
         };
     }
 
     pub fn encode(self: Self, writer: anytype) !void {
-        try writer.writeByte(self.indexbyte1);
-        try writer.writeByte(self.indexbyte2);
+        try writer.writeIntBig(u16, self.index);
         try writer.writeIntBig(u16, self.pad);
     }
 };
@@ -252,25 +249,22 @@ pub const InvokeDynamicParams = struct {
 pub const InvokeInterfaceParams = struct {
     const Self = @This();
 
-    indexbyte1: u8,
-    indexbyte2: u8,
+    index: u16,
     count: u8,
-    pad: u8,
+    pad: u8 = 0,
 
     pub fn decode(allocator: std.mem.Allocator, reader: anytype) !Self {
         _ = allocator;
 
         return Self{
-            .indexbyte1 = try reader.readByte(),
-            .indexbyte2 = try reader.readByte(),
+            .index = try reader.readIntBig(u16),
             .count = try reader.readByte(),
             .pad = try reader.readByte(),
         };
     }
 
     pub fn encode(self: Self, writer: anytype) !void {
-        try writer.writeByte(self.indexbyte1);
-        try writer.writeByte(self.indexbyte2);
+        try writer.writeIntBig(u16, self.index);
         try writer.writeByte(self.count);
         try writer.writeByte(self.pad);
     }

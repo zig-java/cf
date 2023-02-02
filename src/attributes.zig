@@ -360,7 +360,7 @@ pub const DeprecatedAttribute = struct {
 
     pub fn calcAttrLen(self: DeprecatedAttribute) u32 {
         _ = self;
-        return 2;
+        return 0;
     }
 
     pub fn encode(self: DeprecatedAttribute, writer: anytype) anyerror!void {
@@ -450,6 +450,41 @@ pub const ElementValue = union(ElementTag) {
         };
         return value;
     }
+
+    pub fn encode(self: ElementValue, writer: anytype) anyerror!void {
+        try writer.writeIntBig(u16, @enumToInt(self));
+        switch (self) {
+            .EnumConstant => |econst| {
+                try writer.writeIntBig(u16, econst.type_name_index);
+                try writer.writeIntBig(u16, econst.const_name_index);
+            },
+            .AnnotationType => |anno| {
+                try anno.encode(writer);
+            },
+            .Array => |array| {
+                try writer.writeIntBig(u16, array.num_values);
+                for (array.values) |value| try value.encode(writer);
+            },
+            inline else => |value| try writer.writeIntBig(u16, value),
+        }
+    }
+
+    pub fn calcAttrLen(self: ElementValue) u32 {
+        return switch (self) {
+            .EnumConstant => 4,
+            .AnnotationType => |anno| anno.calcAttrLen(),
+            .Array => |array| 2 + array.num_values * 2,
+            else => 2,
+        };
+    }
+
+    pub fn deinit(self: ElementValue, allocator: std.mem.Allocator) void {
+        switch (self) {
+            .AnnotationType => |anno| anno.deinit(allocator),
+            .Array => |array| allocator.free(array.values),
+            else => {},
+        }
+    }
 };
 
 pub const AnnotationValuePair = struct {
@@ -464,9 +499,16 @@ pub const AnnotationValuePair = struct {
     }
 
     pub fn encode(self: AnnotationValuePair, writer: anytype) !void {
-        // TODO
-        _ = writer;
-        _ = self;
+        try writer.writeIntBig(u16, self.element_name_index);
+        try self.value.encode(writer);
+    }
+
+    pub fn calcAttrLen(self: AnnotationValuePair) u32 {
+        return 2 + self.value.calcAttrLen();
+    }
+
+    pub fn deinit(self: AnnotationValuePair, allocator: std.mem.Allocator) void {
+        self.value.deinit(allocator);
     }
 };
 
@@ -490,9 +532,22 @@ pub const Annotation = struct {
     }
 
     pub fn encode(self: Annotation, writer: anytype) !void {
-        // TODO
-        _ = writer;
-        _ = self;
+        try writer.writeIntBig(u16, self.type_index);
+        try writer.writeIntBig(u16, self.num_element_value_pairs);
+        for (self.element_value_pairs) |pair| try pair.encode(writer);
+    }
+
+    pub fn calcAttrLen(self: Annotation) u32 {
+        var len: u32 = 4;
+        for (self.element_value_pairs) |pair| len += pair.calcAttrLen();
+        return len;
+    }
+
+    pub fn deinit(self: Annotation, allocator: std.mem.Allocator) void {
+        for (self.element_value_pairs) |value_pair| {
+            value_pair.deinit(allocator);
+        }
+        allocator.free(self.element_value_pairs);
     }
 };
 
@@ -521,18 +576,18 @@ pub const RuntimeVisibleAnnotationsAttribute = struct {
     }
 
     pub fn calcAttrLen(self: RuntimeVisibleAnnotationsAttribute) u32 {
-        // TODO
-        _ = self;
-        return 2;
+        var len: u32 = 2;
+        for (self.annotations) |anno| len += anno.calcAttrLen();
+        return len;
     }
 
     pub fn encode(self: RuntimeVisibleAnnotationsAttribute, writer: anytype) anyerror!void {
-        // TODO
-        try writer.writeIntBig(u16, self.constantvalue_index);
+        try writer.writeIntBig(u16, self.num_annotations);
+        for (self.annotations) |annotation| try annotation.encode(writer);
     }
 
     pub fn deinit(self: *RuntimeVisibleAnnotationsAttribute) void {
-        // TODO
-        _ = self;
+        for (self.annotations) |annotation| annotation.deinit(self.allocator);
+        self.allocator.free(self.annotations);
     }
 };
